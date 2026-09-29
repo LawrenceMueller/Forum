@@ -1,0 +1,41 @@
+/* ---------- account page ---------- */
+
+.panel { margin-bottom: 2rem; }
+.panel h2 {
+  margin: 0 0 0.6rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--rule);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.15rem;
+}
+.panel > p { margin: 0 0 0.5rem; }
+
+.account-name {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+.account-name .name-real {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.account-name .reveal { font-family: Verdana, Geneva, Tahoma, sans-serif; font-weight: normal; }
+
+.form .hint + .button { margin-top: 0.6rem; }
+
+/* the dangerous section: red edges, red button */
+.panel-danger h2 { color: #9e2a2a; border-bottom-color: #c98a8a; }
+.form-danger { border-color: #c98a8a; }
+.form-danger .ack { margin: 0 0 1rem; }
+
+.button-danger {
+  color: #fff;
+  background: #a63d3d;
+  border-color: #8a2f2f;
+}
+.button-danger:hover { background: #8a2f2f; border-color: #6e2525; }
+.button-danger:visited { color: #fff; }

@@ -1,0 +1,27 @@
+{{/* recovered.html: shown after a successful recovery. */}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">You're back in</h1>
+  <p class="lede">Your password has been changed and you're logged in. Anywhere else this account
+    was logged in has been logged out.</p>
+
+  {{if eq .Remaining 0}}
+  <div class="errors" role="alert">
+    <p><strong>That was your last recovery code.</strong> If you lose this password too,
+      there's no way back into this account. Consider storing it in a password manager.</p>
+  </div>
+  {{else if le .Remaining 2}}
+  <div class="warning">
+    <p><strong>You have {{.Remaining}} recovery {{if eq .Remaining 1}}code{{else}}codes{{end}} left.</strong>
+      Cross off the one you just used so you don't try it again.</p>
+  </div>
+  {{else}}
+  <div class="note">
+    <p>You have <strong>{{.Remaining}} recovery codes</strong> left. Cross off the one you just used
+      so you don't try it again.</p>
+  </div>
+  {{end}}
+
+  <p><a class="button" href="/">Go to the front page</a></p>
+</main>
+{{end}}

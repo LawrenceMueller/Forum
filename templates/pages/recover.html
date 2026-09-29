@@ -1,0 +1,52 @@
+{{/* recover.html: set a new password using a recovery code. */}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Recover your account</h1>
+  <p class="lede">Use one of the recovery codes you saved when you signed up to set a new password.
+    Each code works once.</p>
+
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  <form class="form" method="post" action="/recover">
+    {{template "formguard" .FormToken}}
+    <div class="field">
+      <label for="username">Your username</label>
+      <input id="username" name="username" type="text" value="{{.Username}}" required
+             autocomplete="username" autocapitalize="none" spellcheck="false"
+             placeholder="blue-humming-otter">
+    </div>
+
+    <div class="field">
+      <label for="code">Recovery code</label>
+      <input id="code" name="code" type="text" required class="code-input"
+             autocomplete="off" autocapitalize="characters" spellcheck="false"
+             placeholder="XXXX-XXXX-XXXX">
+      <p class="hint">Dashes, spaces, and capital letters don't matter.</p>
+    </div>
+
+    <div class="field">
+      <label for="password">New password</label>
+      <input id="password" name="password" type="password"
+             minlength="6" maxlength="128" required autocomplete="new-password">
+      <p class="hint">At least 6 characters, with an uppercase letter, a number, and a symbol like ! or #.
+        Common words dressed up with numbers or symbols (like Password1!) won't work, and neither will
+        anything containing your username.</p>
+    </div>
+
+    <div class="field">
+      <label for="confirm">New password again</label>
+      <input id="confirm" name="confirm" type="password"
+             minlength="6" maxlength="128" required autocomplete="new-password">
+    </div>
+
+    <button class="button" type="submit">Set new password</button>
+  </form>
+
+  <p class="aside">Remembered it after all? <a href="/login">Log in</a>.</p>
+</main>
+{{end}}

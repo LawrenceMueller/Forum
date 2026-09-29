@@ -1,0 +1,11 @@
+{{/*
+  formguard.html: anti-bot fields for every form. Expects the form's token.
+  A honeypot field people never see, and a signed timestamp.
+  Checked by checkForm in internal/web/formguard.go.
+*/}}
+{{define "formguard"}}
+<div class="hp" aria-hidden="true">
+  <input name="homepage" type="text" tabindex="-1" autocomplete="off">
+</div>
+<input type="hidden" name="form_token" value="{{.}}">
+{{end}}

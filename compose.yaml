@@ -1,0 +1,29 @@
+# compose.yaml: the services Snowball needs during development.
+# Start:  docker compose up -d      Stop:  docker compose down
+# Wipe the database completely:     docker compose down -v
+
+services:
+  db:
+    image: postgres:18          # pin the major version so upgrades are a choice, not a surprise
+    restart: unless-stopped
+    environment:
+      # These come from .env in this folder. Postgres uses them to create
+      # the user and database the first time the volume is empty.
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # 127.0.0.1 means only this computer can connect, not your whole network.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Keeps the data when the container is stopped or recreated.
+      # (Postgres 18 images expect the volume here, one level above the data folder.)
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

@@ -1,0 +1,98 @@
+{{/*
+  account.html: private settings for the logged-in user.
+  Sections run from everyday to dangerous, with deletion set apart at the bottom.
+*/}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Your account</h1>
+
+  <section class="panel">
+    <h2>Username</h2>
+    <p class="account-name reveal-group">
+      <span class="name-masked" aria-hidden="true">••••••••</span>
+      <span class="name-real" hidden><span class="swatch {{.ColorClass}}" aria-hidden="true"></span>{{.User}}</span>
+      <label class="reveal" hidden><input type="checkbox" autocomplete="off"> show name</label>
+    </p>
+    <p class="hint">Your username is permanent and can't be changed.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Recovery codes</h2>
+    {{if eq .RecoveryCodes 0}}
+    <p>You have <strong>no recovery codes left</strong>. If you forget your password, there's no way back
+      into this account, so keep it somewhere safe, like a password manager.</p>
+    {{else}}
+    <p>You have <strong>{{.RecoveryCodes}}</strong> recovery {{if eq .RecoveryCodes 1}}code{{else}}codes{{end}} left.
+      Each one can be used once to set a new password if you forget yours.</p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <h2>Change password</h2>
+    {{if .PasswordErrors}}
+    <div class="errors" role="alert">
+      <ul>{{range .PasswordErrors}}<li>{{.}}</li>{{end}}</ul>
+    </div>
+    {{end}}
+    <form class="form" method="post" action="/account/password">
+      {{template "formguard" .PasswordToken}}
+      {{/* Helps password managers update the right entry. */}}
+      <input type="text" name="username" value="{{.User}}" autocomplete="username" hidden>
+
+      <div class="field">
+        <label for="current-password">Current password</label>
+        <input id="current-password" name="current" type="password" required autocomplete="current-password">
+      </div>
+
+      <div class="field">
+        <label for="new-password">New password</label>
+        <input id="new-password" name="password" type="password"
+               minlength="6" maxlength="128" required autocomplete="new-password">
+        <p class="hint">At least 6 characters, with an uppercase letter, a number, and a symbol like ! or #.
+          Common words dressed up with numbers or symbols (like Password1!) won't work, and neither will
+          anything containing your username.</p>
+      </div>
+
+      <div class="field">
+        <label for="confirm-password">New password again</label>
+        <input id="confirm-password" name="confirm" type="password"
+               minlength="6" maxlength="128" required autocomplete="new-password">
+      </div>
+
+      <p class="hint">Changing your password logs you out everywhere, including here.
+        You'll log back in with the new one.</p>
+      <button class="button" type="submit">Change password</button>
+    </form>
+  </section>
+
+  <section class="panel panel-danger">
+    <h2>Delete account</h2>
+    <p>Deleting your account logs you out everywhere and removes your password and recovery codes.
+      Your username is retired forever: nobody, including you, can ever use it again.
+      <strong>This can't be undone.</strong></p>
+
+    {{if .DeleteErrors}}
+    <div class="errors" role="alert">
+      <ul>{{range .DeleteErrors}}<li>{{.}}</li>{{end}}</ul>
+    </div>
+    {{end}}
+
+    <form class="form form-danger" method="post" action="/account/delete">
+      {{template "formguard" .DeleteToken}}
+      <input type="text" name="username" value="{{.User}}" autocomplete="username" hidden>
+
+      <div class="field">
+        <label for="delete-password">Your password</label>
+        <input id="delete-password" name="password" type="password" required autocomplete="current-password">
+      </div>
+
+      <label class="ack">
+        <input type="checkbox" name="confirm" value="yes" required>
+        <span>I understand my account will be deleted permanently.</span>
+      </label>
+
+      <button class="button button-danger" type="submit">Delete my account</button>
+    </form>
+  </section>
+</main>
+{{end}}

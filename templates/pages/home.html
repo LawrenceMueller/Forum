@@ -1,0 +1,67 @@
+{{/* home.html: the front page. Fills the "content" hole in layout.html. */}}
+{{define "content"}}
+  <!-- sorting only: every link here is a different view of the same posts -->
+  <nav class="nav" aria-label="Sort posts">
+    <ul>
+      <li><strong>front page</strong></li>
+      <li><a href="/active">active conversations</a></li>
+      <li><a href="/new">newest</a></li>
+      <li><a href="/top">top this week</a></li>
+    </ul>
+  </nav>
+
+  <div class="layout">
+    <main>
+
+      <section class="note" aria-label="Note from the admin">
+        <p><strong>From the admin, Sep 24:</strong> Comment threading is live. It's a little rough around
+          the edges and deep threads get narrow on phones. I'm working on it. If something breaks,
+          post under <a href="/t/meta">meta</a> and I'll see it.</p>
+      </section>
+
+      <!-- front page = hybrid: a few popular posts, then the bump-ordered stream -->
+      <h2 class="section-title">Popular today <span>most points in the last 24 hours</span></h2>
+      <ol class="posts">
+        {{range .Popular}}{{template "post" .}}{{end}}
+      </ol>
+
+      <h2 class="section-title">Active right now <span>sorted by latest reply</span></h2>
+      <ol class="posts">
+        {{range .Active}}{{template "post" .}}{{end}}
+      </ol>
+
+      <nav class="pager" aria-label="Pages">
+        <span>page 1 of 40</span>
+        <a href="/?page=2">next page</a>
+      </nav>
+
+    </main>
+
+    <aside class="sidebar">
+      <section class="box">
+        <h2>About this place</h2>
+        <p>Snowball is a small anonymous forum run by one person. No email to sign up, you don't get
+          to pick your username, no tracking, no ads. Your posts stay, but who you are, does not.</p>
+        <p><a href="/about">More about Snowball</a></p>
+      </section>
+
+      <section class="box">
+        <h2>Tags</h2>
+        <ul class="taglist">
+          {{range .Tags}}<li><a class="tag" href="/t/{{.Name}}">{{.Name}}</a> <span>{{.Count}}</span></li>
+          {{end}}
+        </ul>
+        <a href="/tags">All Tags</a>
+      </section>
+
+      <section class="box">
+        <h2>House rules</h2>
+        <ol class="rules">
+          <li>Be decent. Anonymous doesn't mean be a cunt.</li>
+          <li>No doxxing, ever.</li>
+          <li>Post illegal things and your account will get deleted.</li>
+        </ol>
+      </section>
+    </aside>
+  </div>
+{{end}}

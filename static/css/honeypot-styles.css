@@ -1,0 +1,9 @@
+/* honeypot: off-screen rather than display:none, since some bots skip
+   fields they can tell are hidden */
+.hp {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}

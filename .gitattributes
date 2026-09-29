@@ -1,0 +1,8 @@
+# Store text files with LF line endings in the repository, whatever the OS.
+# Keeps diffs clean between Windows and Linux, and avoids Windows line endings
+# sneaking into files that run inside Linux containers.
+* text=auto eol=lf
+
+# Binary files: never touch.
+*.png binary
+*.jpg binary

@@ -1,0 +1,23 @@
+{{/* welcome.html: shown once, right after an account is created. */}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Welcome to Snowball</h1>
+  <p class="welcome-name">
+    <span class="swatch {{.ColorClass}}" aria-hidden="true"></span>{{.Username}}
+  </p>
+  <p class="lede">Your account exists, and that name is yours now.</p>
+
+  <div class="warning">
+    <p><strong>Save these recovery codes now.</strong> This is the only time you'll see them.
+      If you forget your password, one of these is the only way back in. Each code works once.</p>
+  </div>
+
+  <ol class="codes">
+    {{range .Codes}}<li><code>{{.}}</code></li>
+    {{end}}
+  </ol>
+
+  <p class="hint">A password manager is a good home for them, or paper somewhere safe.</p>
+  <p><a class="button" href="/login">I've saved them, take me to log in</a></p>
+</main>
+{{end}}

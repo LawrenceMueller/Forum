@@ -1,0 +1,21 @@
+{{/*
+  post.html: one row in any post list. Expects a Post as its data (the dot).
+  The rank number comes from a CSS counter, so the partial doesn't need to know its position.
+*/}}
+{{define "post"}}
+<li class="post">
+  <span class="rank"></span>
+  <div class="votes">
+    <button type="button" aria-label="Upvote">&#9650;</button>
+    <button type="button" aria-label="Downvote">&#9660;</button>
+  </div>
+  <div class="body">
+    <a class="title" href="{{.Link}}">{{.Title}}</a>
+    {{if .Domain}}<span class="domain">({{.Domain}})</span>{{end}}
+    <span class="tags">{{range .Tags}}<a class="tag" href="/t/{{.}}">{{.}}</a>{{end}}</span>
+    <p class="meta">{{.Points}} points | {{.Posted.Format "2006-01-02 15:04"}} by
+      <span class="anon {{.AuthorColorClass}}">{{.Author}}</span>
+      | <a href="/p/{{.ID}}">{{.Comments}} comments</a>{{if not .LastReply.IsZero}}, last reply {{.LastReply.Format "15:04"}}{{end}}</p>
+  </div>
+</li>
+{{end}}

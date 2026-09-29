@@ -1,0 +1,57 @@
+{{/* signup.html: account creation. Fills the "content" hole in layout.html. */}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Make an account</h1>
+  <p class="lede">No email, no real name. Snowball picks your name, you pick the password.</p>
+
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  <form class="form" method="post" action="/signup">
+    {{template "username" .Offer}}
+
+    {{template "formguard" .FormToken}}
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password"
+             minlength="6" maxlength="128" required autocomplete="new-password">
+      <p class="hint">At least 6 characters, with an uppercase letter, a number, and a symbol like ! or #.
+        Common words dressed up with numbers or symbols (like Password1!) won't work, and neither will
+        anything containing your username.</p>
+    </div>
+
+    <div class="field">
+      <label for="confirm">Password again</label>
+      <input id="confirm" name="confirm" type="password"
+             minlength="6" maxlength="128" required autocomplete="new-password">
+    </div>
+
+    <div class="warning">
+      <p><strong>Before you continue</strong></p>
+      <p>There's no email, so there's no "forgot password." After signing up you'll get
+        recovery codes, shown once. Save them somewhere safe.</p>
+
+      <div class="acks">
+        <label class="ack">
+          <input type="checkbox" name="ack_recovery" value="yes" required>
+          <span>I understand that if I lose both my password and my recovery codes,
+            my account can't be recovered.</span>
+        </label>
+        <label class="ack">
+          <input type="checkbox" name="ack_username" value="yes" required>
+          <span>I understand that my username is permanent and can't be changed.</span>
+        </label>
+      </div>
+    </div>
+
+    <button class="button" type="submit">Create account</button>
+  </form>
+
+  <p class="aside">Already have an account? <a href="/login">Log in</a>.</p>
+</main>
+{{end}}

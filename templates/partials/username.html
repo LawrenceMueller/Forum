@@ -1,0 +1,26 @@
+{{/*
+  username.html: the generated-name box. Expects a nameOffer as its data.
+  Rendered inside the sign-up page, and on its own when htmx asks for a reroll.
+  The reroll link is a real link, so it still works without JavaScript:
+  /signup?reroll=1 reloads the page with a new name instead of the remembered one.
+*/}}
+{{define "username"}}
+<div class="name-offer" id="name-offer">
+  <label for="username">Your username</label>
+  <div class="name-row">
+    <span class="swatch {{.ColorClass}}" aria-hidden="true"></span>
+    <input id="username" name="username" type="text" value="{{.Name}}" readonly
+           autocomplete="username" aria-describedby="name-permanent">
+    {{if gt .RerollsLeft 0}}
+    <a href="/signup?reroll=1" hx-get="/signup/name" hx-target="#name-offer" hx-swap="outerHTML">reroll</a>
+    <span class="rerolls-left">{{.RerollsLeft}} left</span>
+    {{else}}
+    <span class="rerolls-left">no rerolls left</span>
+    {{end}}
+  </div>
+  <p class="hint" id="name-permanent">
+    {{if gt .RerollsLeft 0}}Take your time with each one.{{else}}More rerolls in {{.RerollWait}}.{{end}}
+    Once you sign up, this name is <strong>permanent</strong>.</p>
+  <input type="hidden" name="sig" value="{{.Sig}}">
+</div>
+{{end}}

@@ -1,0 +1,80 @@
+{{/*
+  layout.html: the frame every page sits in.
+  Each page file defines a "content" block, which gets dropped in the middle.
+*/}}
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Keep Snowball out of search engines and archives (the X-Robots-Tag header says the same). -->
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>{{.Title}} | Snowball</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <!-- htmx settings: don't inject a <style> tag (the CSP would block it),
+       and never evaluate JavaScript written in HTML attributes. -->
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false}'>
+  <script src="/static/js/htmx.min.js"></script>
+  <script src="/static/js/snowball.js" defer></script>
+</head>
+<body>
+<div class="site">
+
+  <header class="masthead">
+    <a class="logo" href="/">
+      <!-- hand-drawn snowball: lumpy on purpose -->
+      <svg viewBox="0 0 40 40" width="38" height="38" aria-hidden="true">
+        <path d="M20 4c8.5-.3 15.2 6.4 15.8 14.3.7 9.2-5.6 16.9-14.4 17.6C12.3 36.6 4.7 30.4 4.1 21.6 3.5 12.2 10.6 4.3 20 4z"
+              fill="#fff" stroke="#1c2730" stroke-width="2"/>
+        <path d="M11 14.5c2-2.2 4.8-3.1 7.4-2.4" fill="none" stroke="#9fb3c0" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="26" cy="24" r="1.6" fill="#9fb3c0"/>
+        <circle cx="16.5" cy="27.5" r="1.1" fill="#9fb3c0"/>
+        <circle cx="28.5" cy="15" r="0.9" fill="#9fb3c0"/>
+      </svg>
+      <span class="wordmark">Snowball</span>
+    </a>
+    <p class="tagline">{{.Tagline}}</p>
+
+    {{if .HideAccount}}
+    {{/* focused pages like sign up and log in skip the account links */}}
+    {{else if .User}}
+    <div class="account">
+      {{/*
+        Name hidden by default, against shoulder-surfing. The "hidden" attribute
+        hides things with no CSS needed, so the name stays hidden even if the
+        stylesheet fails to load. /static/js/snowball.js shows the checkbox
+        and toggles the name. Without JavaScript, the name simply stays hidden.
+        The link goes to /account rather than /u/<name>, so hovering over it
+        doesn't show the name in the browser's status bar.
+      */}}
+      <span class="whoami reveal-group">
+        <span class="name-masked" aria-hidden="true">••••••••</span>
+        <a class="name-real" href="/account" hidden>{{.User}}</a>
+        <label class="reveal" hidden>
+          <input type="checkbox" autocomplete="off"> show name
+        </label>
+      </span>
+      <a class="button" href="/account">account</a>
+      <form class="inline-form" method="post" action="/logout">
+        <button class="linklike" type="submit">log out</button>
+      </form>
+    </div>
+    {{else}}
+    <div class="account">
+      <a class="button" href="/login">log in</a>
+      <a class="button" href="/signup">sign up</a>
+    </div>
+    {{end}}
+  </header>
+
+  {{template "content" .}}
+
+  <footer class="footer">
+    <p>Built by a programmer who is tired of modern websites. Tired of ads and tracking and data harvesting, and those little stupid chat bubbles.</p>
+    <p class="render">page generated in {{.Generated}}</p><p>{{.PostCount}} posts so far</p>
+  </footer>
+
+</div>
+</body>
+</html>
+{{end}}

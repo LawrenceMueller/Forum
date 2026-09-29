@@ -1,0 +1,634 @@
+/* Snowball: site-wide styles
+   One deliberate color (sled yellow), browser-default link colors,
+   borders instead of shadows, and a fixed-width column on desktop. */
+
+:root {
+  --frost:   #dfe7ec;  /* page background around the column */
+  --paper:   #fbfcfd;  /* the column itself */
+  --shade:   #eef3f6;  /* nav bar, box headers, zebra rows */
+  --ink:     #1c2730;
+  --muted:   #5b6770;
+  --rule:    #b9c6ce;
+  --link:    #1a4d9e;
+  --visited: #6a3d9a;
+  --sled:    #f2c230;  /* the one loud color */
+  --note:    #fdf1c4;
+}
+
+* { box-sizing: border-box; }
+
+/* Make the hidden attribute always win. Without this, any rule that sets
+   display (like display: flex) quietly overrides it and the element shows. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--frost);
+  color: var(--ink);
+  font: 14px/1.45 Verdana, Geneva, Tahoma, sans-serif;
+}
+
+a { color: var(--link); }
+a:visited { color: var(--visited); }
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+/* ---------- column ---------- */
+
+.site {
+  max-width: 60rem;
+  margin: 0 auto;
+  min-height: 100vh;
+  background: var(--paper);
+}
+
+/* ---------- masthead ---------- */
+
+.masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.25rem 1rem;
+  padding: 1rem 1rem 0.75rem;
+  border-bottom: 4px solid var(--sled);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+.logo:visited { color: var(--ink); }
+
+.wordmark {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 2rem;
+  font-weight: bold;
+  letter-spacing: -0.02em;
+}
+
+/* account links, pushed to the right of the masthead */
+.account {
+  margin-left: auto;
+  align-self: center;
+  display: flex;
+  flex-wrap: wrap;             /* on narrow phones, wrap instead of squeezing */
+  justify-content: flex-end;   /* ...and keep both lines right-aligned */
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+}
+
+/* ---------- hidden username (toggled by static/js/snowball.js) ---------- */
+
+.whoami {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* fixed-length dots, so the name's length isn't revealed */
+.name-masked {
+  color: var(--muted);
+  letter-spacing: 0.1em;
+}
+
+.reveal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--muted);
+  font-size: 0.9em;
+  cursor: pointer;
+}
+.reveal input {
+  margin: 0;
+  accent-color: var(--link);
+  cursor: pointer;
+}
+
+/* a real button that looks like a link, for actions like "log out"
+   that must be POSTs but read best as plain text */
+.inline-form { display: inline; margin: 0; }
+.linklike {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--link);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* boxed actions, used for links and real buttons alike */
+.button {
+  display: inline-block;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--rule);
+  background: var(--shade);
+  color: var(--ink);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.button:visited { color: var(--ink); }
+.button:hover { border-color: var(--muted); }
+
+.tagline {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+}
+
+/* ---------- nav ---------- */
+
+.nav {
+  background: var(--shade);
+  border-bottom: 1px solid var(--rule);
+}
+
+.nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1rem;
+  margin: 0;
+  padding: 0.45rem 1rem;
+  list-style: none;
+}
+
+/* ---------- layout ---------- */
+
+.layout {
+  display: grid;
+  gap: 1.25rem;
+  padding: 1rem;
+}
+
+main { min-width: 0; }
+
+/* ---------- admin note ---------- */
+
+.note {
+  background: var(--note);
+  border: 1px solid #d9c26a;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+}
+.note p { margin: 0; }
+
+/* ---------- section headings ---------- */
+
+.section-title {
+  margin: 0 0 0.35rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.1rem;
+}
+.section-title span {
+  margin-left: 0.4rem;
+  font: normal 0.75rem Verdana, Geneva, Tahoma, sans-serif;
+  color: var(--muted);
+}
+.posts + .section-title { margin-top: 1.5rem; }
+
+/* ---------- post list ---------- */
+
+.posts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--rule);
+}
+
+.post {
+  display: grid;
+  grid-template-columns: 1.75rem auto 1fr;
+  gap: 0 0.5rem;
+  align-items: start;
+  padding: 0.45rem 0.25rem;
+  border-bottom: 1px solid var(--rule);
+}
+.post:nth-child(even) { background: var(--shade); }
+
+/* rank numbers come from a counter, so templates don't have to count */
+.posts { counter-reset: rank; }
+.post { counter-increment: rank; }
+
+.rank {
+  text-align: right;
+  color: var(--muted);
+  padding-top: 0.1rem;
+}
+.rank::before { content: counter(rank) "."; }
+
+.votes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.votes button {
+  font: 10px/1 Verdana, sans-serif;
+  color: var(--muted);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  width: 1.4rem;
+  height: 1.1rem;
+  padding: 0;
+  cursor: pointer;
+}
+.votes button:hover { color: var(--ink); border-color: var(--muted); }
+
+.title { font-size: 1.05em; }
+
+.domain {
+  font-size: 0.85em;
+  color: var(--muted);
+  margin-left: 0.2rem;
+}
+
+.tags { white-space: nowrap; }
+
+.tag {
+  display: inline-block;
+  margin-left: 0.25rem;
+  padding: 0 0.3em;
+  font-size: 0.8em;
+  line-height: 1.4;
+  color: var(--muted);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  text-decoration: none;
+}
+.tag:visited { color: var(--muted); }
+.tag:hover { color: var(--ink); border-color: var(--muted); }
+
+.meta {
+  margin: 0.15rem 0 0;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+/* name colors: each username's first word picks its class (see colorClass in
+   internal/web/home.go). Classes instead of inline styles keep the Content
+   Security Policy strict. */
+.nc-blue   { --c: #2b6cc4; }
+.nc-green  { --c: #2e9e44; }
+.nc-red    { --c: #d23b3b; }
+.nc-pink   { --c: #e0569a; }
+.nc-orange { --c: #e8811a; }
+.nc-yellow { --c: #e2b714; }
+.nc-brown  { --c: #8a5a2b; }
+.nc-purple { --c: #7b3fc4; }
+.nc-x0 { --c: #6a8f3a; }
+.nc-x1 { --c: #2a8f7a; }
+.nc-x2 { --c: #8f3a6a; }
+.nc-x3 { --c: #8f5a3a; }
+
+/* generated handle with a little color square, unique per thread */
+.anon::before {
+  content: "";
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.25em;
+  background: var(--c, var(--muted));
+  vertical-align: 0.05em;
+}
+
+/* ---------- pager ---------- */
+
+.pager {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 0.25rem;
+  color: var(--muted);
+}
+
+/* ---------- sidebar ---------- */
+
+.box {
+  border: 1px solid var(--rule);
+  margin-bottom: 1rem;
+}
+
+.box h2 {
+  margin: 0;
+  padding: 0.3rem 0.6rem;
+  background: var(--shade);
+  border-bottom: 1px solid var(--rule);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1rem;
+}
+
+.box p,
+.box ul,
+.box ol {
+  margin: 0.5rem 0.6rem;
+}
+
+.taglist {
+  padding: 0;
+  list-style: none;
+}
+.taglist li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.15rem 0;
+}
+.taglist .tag { margin-left: 0; }
+.taglist span { color: var(--muted); }
+
+/* a bare link at the bottom of a box, like "All Tags" */
+.box > a {
+  display: inline-block;
+  margin: 0.1rem 0.6rem 0.6rem;
+}
+
+.rules { padding-left: 1.2rem; }
+.rules li { margin-bottom: 0.25rem; }
+
+/* ---------- form pages (sign up, log in) ---------- */
+
+.narrow {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 2rem;
+}
+
+.page-title {
+  margin: 0 0 0.5rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.6rem;
+}
+
+.lede {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+}
+
+.form {
+  border: 1px solid var(--rule);
+  padding: 1rem;
+}
+
+.field,
+.name-offer { margin-bottom: 1rem; }
+
+.form label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-weight: bold;
+}
+
+.form .field input {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--rule);
+}
+.form input:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+
+/* the generated name, shown big, in a dashed "ticket" box */
+.name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--shade);
+  border: 1px dashed var(--muted);
+}
+.name-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.3rem;
+  font-weight: bold;
+}
+/* the reroll allowance next to the name */
+.rerolls-left {
+  color: var(--muted);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.swatch {
+  flex: none;
+  width: 0.8rem;
+  height: 0.8rem;
+  background: var(--c, var(--muted));
+}
+
+.hint {
+  margin: 0.3rem 0 0;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.warning {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--note);
+  border: 1px solid #d9c26a;
+}
+.warning p { margin: 0; }
+
+.warning p + p { margin-top: 0.35rem; }
+
+/* acknowledgment checkboxes, stacked under a dashed rule inside the warning */
+.acks {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed #d9c26a;
+}
+.form .ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  font-weight: normal;
+  cursor: pointer;
+}
+.ack input {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  margin: 0.15rem 0 0;
+  accent-color: var(--link);
+}
+
+/* submit looks inactive until every box is ticked. Clicking it anyway shows
+   the browser's own "please check this box" message, thanks to "required". */
+.form:has(.ack input:not(:checked)) button[type="submit"] { opacity: 0.5; }
+
+.errors {
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: #fbeaea;
+  border: 1px solid #c98a8a;
+}
+.errors p { margin: 0; }
+.errors ul { margin: 0.25rem 0 0; padding-left: 1.2rem; }
+
+.aside {
+  margin-top: 1rem;
+  color: var(--muted);
+}
+
+/* recovery code input: monospace, like the codes on the welcome page */
+.form .field .code-input {
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.form .field .code-input::placeholder { text-transform: none; }
+
+/* ---------- welcome page ---------- */
+
+.welcome-name {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.25rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.4rem;
+  font-weight: bold;
+}
+
+/* recovery codes: dashed box, monospace so every character is unambiguous */
+.codes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.4rem 1rem;
+  margin: 0 0 0.5rem;
+  padding: 0.75rem 1rem;
+  list-style: none;
+  background: var(--shade);
+  border: 1px dashed var(--muted);
+}
+.codes code {
+  font: 1.05rem/1.4 ui-monospace, Consolas, "Courier New", monospace;
+  letter-spacing: 0.05em;
+}
+
+/* ---------- footer ---------- */
+
+/* yellow rule bookends the page, matching the one under the masthead */
+.footer {
+  border-top: 4px solid var(--sled);
+  background: var(--shade);
+  padding: 1.5rem 1rem 1.25rem;
+  text-align: center;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+.footer p { margin: 0; }
+
+/* the manifesto: first paragraph, set like a signed note */
+.footer p:first-child {
+  max-width: 32rem;
+  margin: 0 auto 1rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.2em;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* render time and post count share one line */
+.footer .render,
+.footer .render + p { display: inline; }
+.footer .render + p::before { content: " | "; }
+
+/* ---------- touch screens: bigger targets, same look ---------- */
+
+@media (pointer: coarse) {
+  .votes button { width: 2rem; height: 1.6rem; font-size: 12px; }
+  .nav ul { gap: 0.4rem 1.1rem; }
+  .tag { padding: 0.1em 0.45em; }
+  .form .field input { font-size: 16px; }
+  .ack input { width: 1.3rem; height: 1.3rem; }
+}
+
+/* ---------- wider screens: denser type, sidebar appears ---------- */
+
+@media (min-width: 50rem) {
+  body { font-size: 13px; }
+
+  .site {
+    border-left: 1px solid var(--rule);
+    border-right: 1px solid var(--rule);
+  }
+
+  .layout { grid-template-columns: 1fr 15rem; }
+}
+
+/* ---------- honeypot ---------- */
+
+/* honeypot: off-screen rather than display:none, since some bots skip
+   fields they can tell are hidden */
+.hp {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* ---------- account page ---------- */
+
+.panel { margin-bottom: 2rem; }
+.panel h2 {
+  margin: 0 0 0.6rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--rule);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.15rem;
+}
+.panel > p { margin: 0 0 0.5rem; }
+
+.account-name {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+.account-name .name-real {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.account-name .reveal { font-family: Verdana, Geneva, Tahoma, sans-serif; font-weight: normal; }
+
+.form .hint + .button { margin-top: 0.6rem; }
+
+/* the dangerous section: red edges, red button */
+.panel-danger h2 { color: #9e2a2a; border-bottom-color: #c98a8a; }
+.form-danger { border-color: #c98a8a; }
+.form-danger .ack { margin: 0 0 1rem; }
+
+.button-danger {
+  color: #fff;
+  background: #a63d3d;
+  border-color: #8a2f2f;
+}
+.button-danger:hover { background: #8a2f2f; border-color: #6e2525; }
+.button-danger:visited { color: #fff; }

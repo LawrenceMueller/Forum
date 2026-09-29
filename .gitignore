@@ -1,0 +1,24 @@
+# Secrets and local settings. .env.example (committed) shows what goes in .env.
+.env
+
+# Compiled program. The leading slash means "only at the project root":
+# without it, "snowball" would also match the cmd/snowball/ folder and
+# silently leave main.go out of the repository.
+/snowball
+/snowball.exe
+
+# Test and coverage output
+*.test
+*.out
+coverage.html
+
+# Editor and OS clutter
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Stray screenshots and scratch files in the project root
+/*.png
+/*.jpg
