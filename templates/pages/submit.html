@@ -1,0 +1,61 @@
+{{/* submit.html: writing a new post. */}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">New post</h1>
+  <p class="lede">A title, plus a link, some text, or both.</p>
+
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  <form class="form" method="post" action="/submit">
+    {{template "formguard" .FormToken}}
+
+    <div class="field">
+      <label for="title">Title</label>
+      <input id="title" name="title" type="text" value="{{.Title}}" required maxlength="200">
+    </div>
+
+    <div class="field">
+      <label for="url">Link <span class="optional">optional</span></label>
+      <input id="url" name="url" type="url" value="{{.URL}}" maxlength="2000"
+             placeholder="https://" autocapitalize="none" spellcheck="false">
+    </div>
+
+    <div class="field">
+      <label for="body">Text <span class="optional">optional</span></label>
+      <textarea id="body" name="body" rows="10" maxlength="40000">{{.Body}}</textarea>
+      <details class="md-help">
+        <summary>Formatting help</summary>
+        <table>
+          <tr><td><code>**bold**</code></td><td><strong>bold</strong></td></tr>
+          <tr><td><code>*italic*</code></td><td><em>italic</em></td></tr>
+          <tr><td><code>~~struck~~</code></td><td><del>struck</del></td></tr>
+          <tr><td><code>[words](https://...)</code></td><td>a link</td></tr>
+          <tr><td><code>- item</code></td><td>a bulleted list</td></tr>
+          <tr><td><code>1. item</code></td><td>a numbered list</td></tr>
+          <tr><td><code>&gt; quote</code></td><td>a quote</td></tr>
+          <tr><td><code>`code`</code></td><td>inline code</td></tr>
+          <tr><td><code>```</code> on its own line, before and after</td><td>a code block</td></tr>
+        </table>
+        <p>No images, headings, or HTML.</p>
+      </details>
+    </div>
+
+    <fieldset class="tag-picker">
+      <legend>Tags <span class="optional">pick 1 to 3</span></legend>
+      {{range .Tags}}
+      <label class="tag-choice">
+        <input type="checkbox" name="tag" value="{{.ID}}"{{if .Checked}} checked{{end}}>
+        <span>{{.Name}}</span>
+      </label>
+      {{end}}
+    </fieldset>
+
+    <button class="button" type="submit">Post</button>
+  </form>
+</main>
+{{end}}

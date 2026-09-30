@@ -28,6 +28,7 @@ type Server struct {
 	trustProxy bool
 	limits     rateLimits
 	logins     *loginGuard
+	stats      siteStats
 }
 
 // rateLimits are per visitor (per IP). The numbers are "one token refills
@@ -39,6 +40,8 @@ type rateLimits struct {
 	accounts *limiter // actually creating an account
 	login    *limiter // submitting the login form
 	recover  *limiter // submitting the recovery form
+	submit   *limiter // submitting the new-post form, per IP
+	posting  *limiter // actually publishing a post, per ACCOUNT (key "user:<id>")
 }
 
 func newRateLimits() rateLimits {
@@ -49,14 +52,12 @@ func newRateLimits() rateLimits {
 		accounts: newLimiter("accounts", 20*time.Minute, 3),
 		login:    newLimiter("login", 6*time.Second, 10),
 		recover:  newLimiter("recover", time.Minute, 5),
+		submit:   newLimiter("submit", 6*time.Second, 10),
+		posting:  newLimiter("posting", 5*time.Minute, 5), // 5 posts at once, then one per 5 minutes
 	}
 }
 
 func New(st *store.Store, cfg Config) (*Server, error) {
-	pages, err := loadPages()
-	if err != nil {
-		return nil, err
-	}
 	names, err := auth.NewNameSigner()
 	if err != nil {
 		return nil, err
@@ -65,22 +66,45 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{
+	s := &Server{
 		store:      st,
 		names:      names,
 		forms:      forms,
-		pages:      pages,
 		trustProxy: cfg.TrustProxy,
 		limits:     newRateLimits(),
 		logins:     newLoginGuard(),
-	}, nil
+	}
+
+	// Templates come after the Server exists, because some template
+	// functions read from it (the post count).
+	if s.pages, err = loadPages(s.templateFuncs()); err != nil {
+		return nil, err
+	}
+
+	s.refreshStats()
+	go s.statsLoop()
+	return s, nil
+}
+
+// templateFuncs are the functions every template can call.
+func (s *Server) templateFuncs() template.FuncMap {
+	return template.FuncMap{
+		"postCount": func() int64 { return s.stats.posts.Load() },
+		"commas":    commas,
+	}
 }
 
 // Handler returns the whole site as one http.Handler: the routes,
 // wrapped in middleware.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	// Reading.
 	mux.HandleFunc("GET /{$}", s.handleHome)
+	mux.HandleFunc("GET /new", s.handleList(listNew, "/new"))
+	mux.HandleFunc("GET /active", s.handleList(listActive, "/active"))
+	mux.HandleFunc("GET /top", s.handleList(listTop, "/top"))
+	mux.HandleFunc("GET /t/{tag}", s.handleTag)
+	mux.HandleFunc("GET /tags", s.handleTags)
 	mux.HandleFunc("GET /robots.txt", robotsTxt)
 
 	// Account pages are never cached (see noStore in headers.go), and the
@@ -93,6 +117,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /login", noStore(s.handleLoginPage))
 	mux.Handle("POST /login", s.limit(lim.login, noStore(s.handleLogin)))
 	mux.Handle("POST /logout", noStore(s.handleLogout))
+
+	// Posts.
+	mux.Handle("GET /submit", noStore(s.handleSubmitPage))
+	mux.Handle("POST /submit", s.limit(lim.submit, noStore(s.handleSubmit)))
+	mux.HandleFunc("GET /p/{id}", s.handlePost)
+	mux.Handle("POST /p/{id}/remove", noStore(s.handleRemovePost))
 
 	mux.Handle("GET /account", noStore(s.handleAccount))
 	mux.Handle("POST /account/password", s.limit(lim.login, noStore(s.handleChangePassword)))

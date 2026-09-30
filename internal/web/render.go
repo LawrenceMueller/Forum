@@ -25,7 +25,6 @@ type basePage struct {
 	Tagline     string
 	User        string // empty means logged out
 	HideAccount bool   // true on sign up / log in, where the links would be redundant
-	PostCount   int
 	Generated   time.Duration
 }
 
@@ -33,9 +32,8 @@ type basePage struct {
 // (which the withUser middleware attached to the request).
 func newBasePage(r *http.Request, title string) basePage {
 	b := basePage{
-		Title:     title,
-		Tagline:   taglines[rand.IntN(len(taglines))],
-		PostCount: 12408, // fake until posts are in the database
+		Title:   title,
+		Tagline: taglines[rand.IntN(len(taglines))],
 	}
 	if u, ok := userFrom(r.Context()); ok {
 		b.User = u.Username
@@ -47,7 +45,10 @@ func newBasePage(r *http.Request, title string) basePage {
 // They have to be separate because every page defines a block called "content",
 // and within one set, the last definition would win.
 // Paths are relative to where the server is started: run it from the project root.
-func loadPages() (map[string]*template.Template, error) {
+//
+// funcs are extra functions templates can call, like {{postCount | commas}}.
+// They have to be registered before parsing, so every set gets them.
+func loadPages(funcs template.FuncMap) (map[string]*template.Template, error) {
 	files, err := filepath.Glob("templates/pages/*.html")
 	if err != nil {
 		return nil, err
@@ -55,7 +56,7 @@ func loadPages() (map[string]*template.Template, error) {
 
 	pages := make(map[string]*template.Template)
 	for _, page := range files {
-		t, err := template.ParseFiles("templates/layout.html", page)
+		t, err := template.New("layout.html").Funcs(funcs).ParseFiles("templates/layout.html", page)
 		if err != nil {
 			return nil, err
 		}

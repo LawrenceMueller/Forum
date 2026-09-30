@@ -1,0 +1,29 @@
+{{/* sidebar.html: the boxes beside every list. Expects the tag counts. */}}
+{{define "sidebar"}}
+<aside class="sidebar">
+  <section class="box">
+    <h2>About this place</h2>
+    <p>Snowball is a small anonymous forum run by one person. No email to sign up, you don't get
+      to pick your username, no tracking, no ads. Your posts stay, but who you are, does not.</p>
+    <p><a href="/about">More about Snowball</a></p>
+  </section>
+
+  <section class="box">
+    <h2>Tags</h2>
+    <ul class="taglist">
+      {{range .}}<li><a class="tag" href="/t/{{.Name}}">{{.Name}}</a> <span>{{.Count | commas}}</span></li>
+      {{end}}
+    </ul>
+    <a href="/tags">All Tags</a>
+  </section>
+
+  <section class="box">
+    <h2>House rules</h2>
+    <ol class="rules">
+      <li>Be decent. Anonymous doesn't mean be a cunt.</li>
+      <li>No doxxing, ever.</li>
+      <li>Post illegal things and your account will get deleted.</li>
+    </ol>
+  </section>
+</aside>
+{{end}}

@@ -6,29 +6,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"snowball/internal/store"
 )
 
-type Post struct {
-	ID        int
-	Title     string
-	URL       string // empty for text posts
-	Domain    string
-	Tags      []string
-	Points    int
-	Comments  int
-	Author    string
-	Posted    time.Time
-	LastReply time.Time // zero value means "don't show it"
-}
-
-// Link is where the title points: the external URL for link posts,
-// the post's own page for text posts. Templates can call methods like fields.
-func (p Post) Link() string {
-	if p.URL != "" {
-		return p.URL
-	}
-	return fmt.Sprintf("/p/%d", p.ID)
-}
+// ---- name colors ----
 
 // Name colors are CSS classes (nc-blue, nc-green, ... in style.css) rather
 // than inline style attributes, so the Content Security Policy can forbid
@@ -53,75 +35,200 @@ func colorClass(name string) string {
 	return fmt.Sprintf("nc-x%d", h.Sum32()%fallbackColorCount)
 }
 
-func (p Post) AuthorColorClass() string { return colorClass(p.Author) }
+// ---- the sort bar and sidebar shared by every list page ----
 
-type TagCount struct {
-	Name  string
-	Count int
+// navData drives partials/sortnav.html: which sort is current, and whether
+// to show the "new post" button.
+type navData struct {
+	Current  string // "front", "active", "new", "top", or "" (e.g. on a tag page)
+	LoggedIn bool
 }
 
-// homePage embeds basePage, so the layout's fields (Title, Tagline...)
-// sit right alongside the home page's own data.
+func navFor(r *http.Request, current string) navData {
+	_, ok := userFrom(r.Context())
+	return navData{Current: current, LoggedIn: ok}
+}
+
+// views turns store posts into display-ready ones.
+func views(posts []store.Post, showLastActivity bool) []postView {
+	out := make([]postView, 0, len(posts))
+	for _, p := range posts {
+		v := toPostView(p)
+		// "last reply" only means something once a post has comments.
+		v.ShowLastReply = showLastActivity && p.CommentCount > 0
+		out = append(out, v)
+	}
+	return out
+}
+
+// ---- the front page ----
+
 type homePage struct {
 	basePage
-	Popular []Post
-	Active  []Post
-	Tags    []TagCount
+	Nav        navData
+	Popular    []postView
+	Active     []postView
+	MoreActive bool // there are more active posts than fit on the front page
+	Tags       []store.TagCount
 }
 
+// GET /
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
+	ctx := r.Context()
 
-	data := homePage{
-		basePage: newBasePage(r, "front page"),
-		Popular:  samplePopular,
-		Active:   sampleActive,
-		Tags:     sampleTags,
+	popular, _, err := s.store.ListPosts(ctx, store.ListOptions{Sort: store.SortPopular, Limit: 3})
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	active, next, err := s.store.ListPosts(ctx, store.ListOptions{Sort: store.SortActive, Limit: 20})
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	tags, err := s.store.TagCounts(ctx)
+	if err != nil {
+		serverError(w, err)
+		return
 	}
 
+	data := homePage{
+		basePage:   newBasePage(r, "front page"),
+		Nav:        navFor(r, "front"),
+		Popular:    views(popular, false),
+		Active:     views(active, true),
+		MoreActive: next != nil,
+		Tags:       tags,
+	}
 	data.Generated = time.Since(start)
 	s.render(w, "home.html", data)
 }
 
-// ---- fake data until posts are in the database ----
+// ---- full lists: newest, active, top, and tag pages ----
 
-func at(day, hour, min int) time.Time {
-	return time.Date(2026, time.September, day, hour, min, 0, 0, time.Local)
+type listPage struct {
+	basePage
+	Nav         navData
+	Heading     string
+	Description string
+	Posts       []postView
+	EmptyText   string
+	NextURL     string // "older posts", if there are more
+	FirstURL    string // "back to the start", when not on the first page
+	Tags        []store.TagCount
 }
 
-var samplePopular = []Post{
-	{ID: 1, Title: "I rebuilt my grandfather's shortwave radio and heard Portugal last night",
-		Tags: []string{"diy", "show"}, Points: 214, Comments: 61, Author: "blue-humming-otter", Posted: at(26, 6, 12)},
-	{ID: 2, Title: "Notes on running Postgres on a $5 server for three years",
-		URL: "https://example.org/postgres", Domain: "example.org",
-		Tags: []string{"tech"}, Points: 187, Comments: 43, Author: "green-sketching-heron", Posted: at(26, 2, 40)},
-	{ID: 3, Title: "Ask: what's a book you reread every winter?",
-		Tags: []string{"books", "ask"}, Points: 152, Comments: 128, Author: "purple-reading-owl", Posted: at(25, 21, 5)},
+// listSpec describes one kind of list page.
+type listSpec struct {
+	sort        store.Sort
+	nav         string
+	heading     string
+	description string
+	emptyText   string
 }
 
-var sampleActive = []Post{
-	{ID: 6, Title: "Should anonymous posts be editable after an hour?",
-		Tags: []string{"meta", "ask"}, Points: 64, Comments: 39, Author: "orange-pondering-walrus",
-		Posted: at(25, 12, 48), LastReply: at(26, 14, 52)},
-	{ID: 8, Title: "Is it worth learning to solder in my 40s?",
-		Tags: []string{"diy", "ask"}, Points: 33, Comments: 22, Author: "red-tinkering-badger",
-		Posted: at(25, 7, 2), LastReply: at(26, 14, 47)},
-	{ID: 4, Title: "The bread recipe that finally worked after 11 failed attempts",
-		Tags: []string{"food", "show"}, Points: 98, Comments: 27, Author: "yellow-baking-hare",
-		Posted: at(25, 18, 33), LastReply: at(26, 14, 31)},
-	{ID: 5, Title: "A trail map drawn entirely from memory by a retired ranger",
-		URL: "https://example.net/trail", Domain: "example.net",
-		Tags: []string{"outdoors", "art"}, Points: 76, Comments: 12, Author: "brown-hiking-moose",
-		Posted: at(25, 15, 10), LastReply: at(26, 14, 5)},
-	{ID: 7, Title: "Tapes I found in a thrift store, digitized",
-		Tags: []string{"music", "show"}, Points: 51, Comments: 8, Author: "pink-drumming-axolotl",
-		Posted: at(25, 9, 17), LastReply: at(26, 13, 40)},
-	{ID: 9, Title: "What are you working on this weekend?",
-		Tags: []string{"ask"}, Points: 29, Comments: 17, Author: "green-napping-puffin",
-		Posted: at(26, 8, 15), LastReply: at(26, 13, 22)},
+var (
+	listNew = listSpec{store.SortNew, "new", "Newest", "newest first",
+		"Nothing's been posted yet."}
+	listActive = listSpec{store.SortActive, "active", "Active conversations", "sorted by latest activity",
+		"Nothing's been posted yet."}
+	listTop = listSpec{store.SortTop, "top", "Top this week", "most points in the last 7 days",
+		"Nothing's been posted this week."}
+)
+
+// handleList returns a handler for a sorted list of all posts.
+func (s *Server) handleList(spec listSpec, path string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.renderList(w, r, spec, path, "")
+	}
 }
 
-var sampleTags = []TagCount{
-	{"tech", 3102}, {"ask", 2488}, {"books", 1877}, {"show", 1530}, {"diy", 1240},
-	{"food", 964}, {"outdoors", 711}, {"music", 655}, {"art", 418}, {"meta", 302},
+// GET /t/{tag}: newest posts with one tag.
+func (s *Server) handleTag(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("tag")
+	ok, err := s.store.TagExists(r.Context(), name)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	spec := listSpec{
+		sort:        store.SortNew,
+		heading:     "Tagged " + name,
+		description: "newest first",
+		emptyText:   "No posts with this tag yet.",
+	}
+	s.renderList(w, r, spec, "/t/"+name, name)
+}
+
+func (s *Server) renderList(w http.ResponseWriter, r *http.Request, spec listSpec, path, tag string) {
+	start := time.Now()
+	ctx := r.Context()
+
+	opt := store.ListOptions{Sort: spec.sort, Tag: tag, Limit: 30}
+	if raw := r.URL.Query().Get("after"); raw != "" {
+		c, err := store.ParseCursor(raw)
+		if err != nil {
+			// A mangled link: just show the first page.
+			http.Redirect(w, r, path, http.StatusSeeOther)
+			return
+		}
+		opt.After = &c
+	}
+
+	posts, next, err := s.store.ListPosts(ctx, opt)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	tags, err := s.store.TagCounts(ctx)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+
+	data := listPage{
+		basePage:    newBasePage(r, strings.ToLower(spec.heading)),
+		Nav:         navFor(r, spec.nav),
+		Heading:     spec.heading,
+		Description: spec.description,
+		Posts:       views(posts, spec.sort == store.SortActive),
+		EmptyText:   spec.emptyText,
+		Tags:        tags,
+	}
+	if opt.After != nil {
+		data.FirstURL = path
+		if len(posts) == 0 {
+			data.EmptyText = "No older posts."
+		}
+	}
+	if next != nil {
+		data.NextURL = path + "?after=" + next.String()
+	}
+	data.Generated = time.Since(start)
+	s.render(w, "list.html", data)
+}
+
+// ---- all tags ----
+
+type tagsPage struct {
+	basePage
+	Tags []store.TagCount
+}
+
+// GET /tags
+func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	tags, err := s.store.TagCounts(r.Context())
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	data := tagsPage{basePage: newBasePage(r, "tags"), Tags: tags}
+	data.Generated = time.Since(start)
+	s.render(w, "tags.html", data)
 }

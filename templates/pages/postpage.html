@@ -1,0 +1,52 @@
+{{/*
+  postpage.html: one post and (later) its comments.
+  Named postpage rather than post, to avoid confusion with partials/post.html,
+  which is one row in a list of posts.
+*/}}
+{{define "content"}}
+<main class="thread">
+  {{with .Post}}
+  {{if and .Removed (not $.IsAdmin)}}
+  <article class="thread-post">
+    <h1 class="thread-title">[removed]</h1>
+    <p class="meta">This post was removed by the admin.</p>
+  </article>
+  {{else}}
+  <article class="thread-post">
+    {{if .Removed}}
+    <div class="errors"><p><strong>Removed.</strong> Hidden from everyone else; you're seeing it because you're the admin.</p></div>
+    {{end}}
+
+    <h1 class="thread-title">
+      {{if .Link}}<a href="{{.Link}}" rel="nofollow ugc noopener">{{.Title}}</a>
+        <span class="domain">({{.Domain}})</span>
+      {{else}}{{.Title}}{{end}}
+    </h1>
+
+    <p class="meta">
+      {{.Score}} points | {{.Posted.Format "2006-01-02 15:04"}} by
+      {{if .AuthorDeleted}}<span class="author-deleted">[deleted]</span>
+      {{else}}<span class="anon {{.ColorClass}}">{{.Author}}</span>{{end}}
+      {{if .Edited}}| edited{{end}}
+      <span class="tags">{{range .Tags}}<a class="tag" href="/t/{{.}}">{{.}}</a>{{end}}</span>
+    </p>
+
+    {{if .BodyHTML}}<div class="post-body">{{.BodyHTML}}</div>{{end}}
+  </article>
+  {{end}}
+  {{end}}
+
+  {{if and .IsAdmin (not .Post.Removed)}}
+  <form class="admin-actions" method="post" action="/p/{{.Post.PublicID}}/remove">
+    {{template "formguard" .RemoveToken}}
+    <span class="admin-label">admin</span>
+    <button class="button button-danger" type="submit">remove post</button>
+  </form>
+  {{end}}
+
+  <section class="comments">
+    <h2 class="section-title">Comments</h2>
+    <p class="hint">Comments are coming soon.</p>
+  </section>
+</main>
+{{end}}

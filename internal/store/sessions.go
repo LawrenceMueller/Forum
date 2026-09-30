@@ -32,12 +32,12 @@ func (s *Store) DeleteExpiredSessions(ctx context.Context) (int64, error) {
 func (s *Store) UserBySession(ctx context.Context, tokenHash string) (User, bool, error) {
 	var u User
 	err := s.db.QueryRow(ctx, `
-		SELECT u.id, u.username
+		SELECT u.id, u.username, u.is_admin
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1 AND s.expires_at > now() AND u.deleted_at IS NULL`,
 		tokenHash,
-	).Scan(&u.ID, &u.Username)
+	).Scan(&u.ID, &u.Username, &u.IsAdmin)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, false, nil

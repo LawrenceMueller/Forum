@@ -1,0 +1,26 @@
+{{/* list.html: a full list of posts (newest, active, top, or one tag). */}}
+{{define "content"}}
+  {{template "sortnav" .Nav}}
+
+  <div class="layout">
+    <main>
+      <h1 class="section-title list-title">{{.Heading}} <span>{{.Description}}</span></h1>
+
+      {{if .Posts}}
+      <ol class="posts unranked">
+        {{range .Posts}}{{template "post" .}}{{end}}
+      </ol>
+      {{else}}
+      <p class="empty">{{.EmptyText}}</p>
+      {{end}}
+
+      {{if or .FirstURL .NextURL}}
+      <nav class="pager" aria-label="Pages">
+        {{if .FirstURL}}<a href="{{.FirstURL}}">back to the start</a>{{else}}<span></span>{{end}}
+        {{if .NextURL}}<a href="{{.NextURL}}">older posts</a>{{end}}
+      </nav>
+      {{end}}
+    </main>
+    {{template "sidebar" .Tags}}
+  </div>
+{{end}}

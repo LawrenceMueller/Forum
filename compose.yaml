@@ -2,6 +2,8 @@
 # Start:  docker compose up -d      Stop:  docker compose down
 # Wipe the database completely:     docker compose down -v
 
+name: snowball
+
 services:
   db:
     image: postgres:18          # pin the major version so upgrades are a choice, not a surprise

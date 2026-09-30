@@ -14,6 +14,7 @@ var ErrUsernameTaken = errors.New("username already taken")
 type User struct {
 	ID       int64
 	Username string
+	IsAdmin  bool // set by hand in psql, never through the site
 }
 
 // UsernameTaken is the courtesy check used when offering a name.

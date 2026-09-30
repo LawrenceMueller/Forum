@@ -22,3 +22,8 @@ Then open http://localhost:8080. Run the tests with `go test ./...`.
 ## Learn more
 
 [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) covers everything: the values behind the project, the architecture, the database schema, every feature and where it lives, the decisions made along the way, and the roadmap.
+
+
+docker compose exec db psql -U snowball
+
+goose -dir ./migrations postgres "postgres://snowball:snowball-dev-only@localhost:5432/snowball?sslmode=disable" up

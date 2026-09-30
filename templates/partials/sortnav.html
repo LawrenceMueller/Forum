@@ -1,0 +1,15 @@
+{{/*
+  sortnav.html: the sort bar above every list. Expects a navData.
+  The current sort shows as plain bold text instead of a link.
+*/}}
+{{define "sortnav"}}
+<nav class="nav" aria-label="Sort posts">
+  <ul>
+    <li>{{if eq .Current "front"}}<strong>front page</strong>{{else}}<a href="/">front page</a>{{end}}</li>
+    <li>{{if eq .Current "active"}}<strong>active conversations</strong>{{else}}<a href="/active">active conversations</a>{{end}}</li>
+    <li>{{if eq .Current "new"}}<strong>newest</strong>{{else}}<a href="/new">newest</a>{{end}}</li>
+    <li>{{if eq .Current "top"}}<strong>top this week</strong>{{else}}<a href="/top">top this week</a>{{end}}</li>
+    {{if .LoggedIn}}<li class="nav-action"><a class="button" href="/submit">new post</a></li>{{end}}
+  </ul>
+</nav>
+{{end}}

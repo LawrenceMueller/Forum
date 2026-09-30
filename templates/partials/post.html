@@ -1,6 +1,7 @@
 {{/*
-  post.html: one row in any post list. Expects a Post as its data (the dot).
-  The rank number comes from a CSS counter, so the partial doesn't need to know its position.
+  post.html: one row in any list of posts. Expects a postView.
+  Rank numbers come from a CSS counter; lists with class "unranked" hide them.
+  The vote arrows don't do anything yet: votes are slice four.
 */}}
 {{define "post"}}
 <li class="post">
@@ -10,12 +11,14 @@
     <button type="button" aria-label="Downvote">&#9660;</button>
   </div>
   <div class="body">
-    <a class="title" href="{{.Link}}">{{.Title}}</a>
+    <a class="title" href="{{.Href}}"{{if .Link}} rel="nofollow ugc noopener"{{end}}>{{.Title}}</a>
     {{if .Domain}}<span class="domain">({{.Domain}})</span>{{end}}
     <span class="tags">{{range .Tags}}<a class="tag" href="/t/{{.}}">{{.}}</a>{{end}}</span>
-    <p class="meta">{{.Points}} points | {{.Posted.Format "2006-01-02 15:04"}} by
-      <span class="anon {{.AuthorColorClass}}">{{.Author}}</span>
-      | <a href="/p/{{.ID}}">{{.Comments}} comments</a>{{if not .LastReply.IsZero}}, last reply {{.LastReply.Format "15:04"}}{{end}}</p>
+    <p class="meta">{{.Score}} points | {{.Posted.Format "2006-01-02 15:04"}} by
+      {{if .AuthorDeleted}}<span class="author-deleted">[deleted]</span>
+      {{else}}<span class="anon {{.ColorClass}}">{{.Author}}</span>{{end}}
+      | <a href="/p/{{.PublicID}}">{{.Comments}} {{if eq .Comments 1}}comment{{else}}comments{{end}}</a>
+      {{- if .ShowLastReply}}, last reply {{.LastActivity.Format "2006-01-02 15:04"}}{{end}}</p>
   </div>
 </li>
 {{end}}

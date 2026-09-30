@@ -1,0 +1,15 @@
+{{/* tags.html: every tag, with how many posts carry it. */}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Tags</h1>
+  <p class="lede">Every post carries one to three of these. Missing one? Suggest it under
+    <a href="/t/meta">meta</a>.</p>
+
+  <ul class="taglist tag-index">
+    {{range .Tags}}
+    <li><a class="tag" href="/t/{{.Name}}">{{.Name}}</a>
+      <span>{{.Count | commas}} {{if eq .Count 1}}post{{else}}posts{{end}}</span></li>
+    {{end}}
+  </ul>
+</main>
+{{end}}
