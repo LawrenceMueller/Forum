@@ -1,0 +1,12 @@
+{{/* tagpicker.html: the tag checkboxes, shared by the submit and edit pages. Expects []tagChoice. */}}
+{{define "tagpicker"}}
+<fieldset class="tag-picker">
+  <legend>Tags <span class="optional">pick 1 to 3</span></legend>
+  {{range .}}
+  <label class="tag-choice">
+    <input type="checkbox" name="tag" value="{{.ID}}"{{if .Checked}} checked{{end}}>
+    <span>{{.Name}}</span>
+  </label>
+  {{end}}
+</fieldset>
+{{end}}

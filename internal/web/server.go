@@ -54,6 +54,7 @@ type rateLimits struct {
 	voting       *limiter // vote clicks, per ACCOUNT: the fast limit
 	votingDaily  *limiter // per ACCOUNT: the daily budget
 	votingAuthor *limiter // per ACCOUNT per AUTHOR: votes on one person's content
+	editing      *limiter // saving edits to posts and comments, per ACCOUNT
 }
 
 func newRateLimits() rateLimits {
@@ -72,6 +73,7 @@ func newRateLimits() rateLimits {
 		voting:       newLimiter("voting", 3*time.Second, 10), // 10 at once, then one per 3s
 		votingDaily:  newLimiter("voting-daily", 24*time.Hour/250, 250), // 250 a day, rolling
 		votingAuthor: newLimiter("voting-author", 24*time.Hour/10, 10),  // 10 a day per author
+		editing:      newLimiter("editing", 10*time.Second, 20),         // 20 at once, then one per 10s
 	}
 }
 
@@ -146,6 +148,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /submit", s.limit(lim.submit, noStore(s.handleSubmit)))
 	mux.HandleFunc("GET /p/{id}", s.handlePost)
 	mux.Handle("POST /p/{id}/remove", noStore(s.handleRemovePost))
+	mux.Handle("GET /p/{id}/edit", noStore(s.handleEditPostPage))
+	mux.Handle("POST /p/{id}/edit", s.limit(lim.submit, noStore(s.handleEditPost)))
 
 	// Votes.
 	mux.Handle("POST /vote", s.limit(lim.vote, noStore(s.handleVote)))
@@ -155,6 +159,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /p/{id}/c/{cid}/reply", noStore(s.handleReplyForm))
 	mux.HandleFunc("GET /p/{id}/c/{cid}", s.handleCommentThread)
 	mux.Handle("POST /p/{id}/c/{cid}/remove", noStore(s.handleRemoveComment))
+	mux.Handle("GET /p/{id}/c/{cid}/edit", noStore(s.handleEditCommentForm))
+	mux.Handle("POST /p/{id}/c/{cid}/edit", s.limit(lim.comment, noStore(s.handleEditComment)))
 
 	mux.Handle("GET /account", noStore(s.handleAccount))
 	mux.Handle("POST /account/password", s.limit(lim.login, noStore(s.handleChangePassword)))

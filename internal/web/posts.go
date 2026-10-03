@@ -236,6 +236,8 @@ type postView struct {
 	LastActivity  time.Time
 	ShowLastReply bool // lists sorted by activity show when the last reply came
 	Vote          voteWidget
+	CanEdit       bool   // the viewer wrote it and the edit window is open
+	EditLeft      string // "7 minutes", for the edit link
 }
 
 func toPostView(p store.Post) postView {
@@ -333,6 +335,8 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	view.Vote = opts.viewer.widget("post", p.PublicID, p.Score, myPostVote[p.ID],
 		p.Author, p.AuthorDeleted, p.Removed || p.Deleted, true)
+	view.CanEdit, view.EditLeft = canEdit(opts.viewer, p.Author, p.AuthorDeleted,
+		p.Removed || p.Deleted, p.CreatedAt)
 
 	data := postPage{
 		basePage:    newBasePage(r, p.Title),

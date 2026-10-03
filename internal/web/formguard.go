@@ -41,6 +41,10 @@ var (
 	// "Ha, same" is a real comment, so the minimum is short.
 	formComment = formRule{"comment", 2 * time.Second, "/"}
 
+	// Edits: often a quick typo fix, so the minimums are short.
+	formEditPost    = formRule{"edit-post", 2 * time.Second, "/"}
+	formEditComment = formRule{"edit-comment", time.Second, "/"}
+
 	// Admin actions: no minimum (a quick click is fine), but still need a token.
 	formRemovePost    = formRule{"remove-post", 0, "/"}
 

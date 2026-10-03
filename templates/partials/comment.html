@@ -13,7 +13,8 @@
     {{else if .AuthorDeleted}}<span class="author-deleted">[deleted]</span>
     {{else}}<span class="anon {{.ColorClass}}">{{.Author}}</span>{{end}}
     <a class="permalink" href="/p/{{.PostID}}#c-{{.PublicID}}">{{.Posted.Format "2006-01-02 15:04"}}</a>
-    {{- if .Edited}} | edited{{end}}
+    {{- /* id'd so an htmx edit can update the marker in place */ -}}
+    <span id="ce-{{.PublicID}}">{{if .Edited}} | edited{{end}}</span>
     {{- if .ReplyingTo}} | replying to {{.ReplyingTo}}{{end}}
   </summary>
 
@@ -23,7 +24,7 @@
     {{if .Placeholder}}
     <p class="comment-gone">{{.Placeholder}}</p>
     {{else}}
-    <div class="comment-body">{{.BodyHTML}}</div>
+    <div class="comment-body" id="cb-{{.PublicID}}">{{.BodyHTML}}</div>
     {{end}}
 
     {{if not .Placeholder}}
@@ -33,6 +34,12 @@
       <a href="/p/{{.PostID}}/c/{{.PublicID}}/reply"
          hx-get="/p/{{.PostID}}/c/{{.PublicID}}/reply"
          hx-target="#reply-{{.PublicID}}">reply</a>
+      {{end}}
+      {{if .CanEdit}}
+      <a href="/p/{{.PostID}}/c/{{.PublicID}}/edit"
+         hx-get="/p/{{.PostID}}/c/{{.PublicID}}/edit"
+         hx-target="#cb-{{.PublicID}}"
+         title="{{.EditLeft}} left to edit">edit</a>
       {{end}}
       {{if .RemoveToken}}
       <form class="inline-form" method="post" action="/p/{{.PostID}}/c/{{.PublicID}}/remove">

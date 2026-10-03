@@ -45,15 +45,7 @@
       </details>
     </div>
 
-    <fieldset class="tag-picker">
-      <legend>Tags <span class="optional">pick 1 to 3</span></legend>
-      {{range .Tags}}
-      <label class="tag-choice">
-        <input type="checkbox" name="tag" value="{{.ID}}"{{if .Checked}} checked{{end}}>
-        <span>{{.Name}}</span>
-      </label>
-      {{end}}
-    </fieldset>
+    {{template "tagpicker" .Tags}}
 
     <button class="button" type="submit">Post</button>
   </form>

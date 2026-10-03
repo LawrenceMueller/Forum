@@ -30,6 +30,7 @@
       {{if .AuthorDeleted}}<span class="author-deleted">[deleted]</span>
       {{else}}<span class="anon {{.ColorClass}}">{{.Author}}</span>{{end}}
       {{if .Edited}}| edited{{end}}
+      {{if .CanEdit}}| <a href="/p/{{.PublicID}}/edit">edit</a> <span class="edit-left">({{.EditLeft}} left)</span>{{end}}
       <span class="tags">{{range .Tags}}<a class="tag" href="/t/{{.}}">{{.}}</a>{{end}}</span>
     </p>
     </div>

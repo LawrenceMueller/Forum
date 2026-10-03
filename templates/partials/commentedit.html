@@ -1,0 +1,22 @@
+{{/*
+  commentedit.html: the form for editing a comment. Expects a commentEditForm.
+  Inline (htmx), it replaces the comment's text and saves in place; on its
+  own page (no JavaScript), it submits normally.
+*/}}
+{{define "commentedit"}}
+{{if .Closed}}
+<p class="edit-closed">{{.Error}} <a href="/p/{{.PostID}}#c-{{.CommentID}}">back to the comment</a></p>
+{{else}}
+<form class="edit-form" method="post" action="/p/{{.PostID}}/c/{{.CommentID}}/edit"
+      {{if .Inline}}hx-post="/p/{{.PostID}}/c/{{.CommentID}}/edit" hx-target="#cb-{{.CommentID}}"{{end}}>
+  {{template "formguard" .FormToken}}
+  {{if .Error}}<p class="edit-error" role="alert">{{.Error}}</p>{{end}}
+  <textarea name="body" rows="5" maxlength="10000" required aria-label="Edit your comment">{{.Body}}</textarea>
+  <div class="edit-actions">
+    <button class="button" type="submit">save</button>
+    <a href="/p/{{.PostID}}#c-{{.CommentID}}">cancel</a>
+    <span class="hint">{{.TimeLeft}} left to edit</span>
+  </div>
+</form>
+{{end}}
+{{end}}

@@ -1,0 +1,8 @@
+{{/* editcomment.html: editing a comment on its own page (used without JavaScript). */}}
+{{define "content"}}
+<main class="thread">
+  <p class="backlink"><a href="/p/{{.PostID}}">&larr; back to "{{.PostTitle}}"</a></p>
+  <h1 class="section-title">Edit your comment</h1>
+  {{template "commentedit" .Form}}
+</main>
+{{end}}

@@ -1026,3 +1026,54 @@ a.vote-off:hover { color: var(--muted); border-color: var(--rule); }
 .post-byline .meta { margin: 0; }
 
 .comment-actions { align-items: center; }
+
+/* ---------- editing ---------- */
+
+.edit-form { margin: 0.3rem 0; }
+.edit-form textarea {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  line-height: 1.5;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--rule);
+  resize: vertical;
+}
+.edit-form textarea:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+.edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.8rem;
+  margin-top: 0.4rem;
+  font-size: 0.85em;
+}
+.edit-actions .hint { margin: 0; }
+.edit-error,
+.edit-closed {
+  margin: 0.3rem 0;
+  font-size: 0.85em;
+  color: #9e2a2a;
+}
+
+.edit-left { font-size: 0.9em; }
+
+/* title and link on the edit page: shown, not editable */
+.fixed-field p {
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  color: var(--muted);
+  background: var(--shade);
+  border: 1px dashed var(--rule);
+  overflow-wrap: anywhere;
+}
+.fixed-label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-weight: bold;
+}
+.fixed-note { margin: -0.5rem 0 1rem; }

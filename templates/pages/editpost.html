@@ -1,0 +1,47 @@
+{{/* editpost.html: editing a post's text and tags. */}}
+{{define "content"}}
+<main class="narrow">
+  <p class="backlink"><a href="/p/{{.PostID}}">&larr; back to the post</a></p>
+  <h1 class="page-title">Edit post</h1>
+
+  {{if .Closed}}
+  <p class="lede">The 10-minute editing window has closed, so this post is final now.</p>
+  {{else}}
+  <p class="lede">You can edit for {{.TimeLeft}} more. Edits after the first two minutes are marked "edited".</p>
+
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  <form class="form" method="post" action="/p/{{.PostID}}/edit">
+    {{template "formguard" .FormToken}}
+
+    {{/* Title and link are fixed once posted: swapping a link after a post
+         has collected votes is a classic spam trick. */}}
+    <div class="field fixed-field">
+      <span class="fixed-label">Title</span>
+      <p>{{.PostTitle}}</p>
+    </div>
+    {{if .Link}}
+    <div class="field fixed-field">
+      <span class="fixed-label">Link</span>
+      <p>{{.Link}}</p>
+    </div>
+    {{end}}
+    <p class="hint fixed-note">The title and link can't be changed after posting, so nobody's vote ends up on something different from what they voted for.</p>
+
+    <div class="field">
+      <label for="body">Text</label>
+      <textarea id="body" name="body" rows="10" maxlength="40000">{{.Body}}</textarea>
+    </div>
+
+    {{template "tagpicker" .Tags}}
+
+    <button class="button" type="submit">Save changes</button>
+  </form>
+  {{end}}
+</main>
+{{end}}

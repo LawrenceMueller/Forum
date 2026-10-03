@@ -77,6 +77,8 @@ type commentNode struct {
 	CanReply      bool
 	RemoveToken   string // set when the viewer is the admin
 	Vote          voteWidget
+	CanEdit       bool   // the viewer wrote it and the edit window is open
+	EditLeft      string // "7 minutes", for the edit link
 
 	// used while building and sorting, not by templates
 	id, parentID int64
@@ -134,6 +136,7 @@ func newCommentNode(c store.Comment, o treeOptions) *commentNode {
 
 	n.CanReply = o.canComment && !c.Deleted && !c.Removed
 	if !n.hidden {
+		n.CanEdit, n.EditLeft = canEdit(o.viewer, c.Author, c.AuthorDeleted, c.Removed || c.Deleted, c.CreatedAt)
 		n.Vote = o.viewer.widget("comment", c.PublicID, c.Upvotes-c.Downvotes, o.myVotes[c.ID],
 			c.Author, c.AuthorDeleted, c.Removed || c.Deleted || o.postClosed, true)
 	}

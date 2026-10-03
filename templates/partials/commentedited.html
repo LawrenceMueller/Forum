@@ -1,0 +1,11 @@
+{{/*
+  commentedited.html: what htmx gets back after a comment edit. Expects a commentNode.
+  The first part replaces the edit form with the new text. The span is an
+  "out-of-band" swap: htmx finds the element with the same id elsewhere on
+  the page (in the comment's header line) and replaces it, so the "edited"
+  marker appears without reloading anything else.
+*/}}
+{{define "commentedited"}}
+{{.BodyHTML}}
+<span id="ce-{{.PublicID}}" hx-swap-oob="true">{{if .Edited}} | edited{{end}}</span>
+{{end}}
