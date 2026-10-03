@@ -1,8 +1,9 @@
+# Fixed project name, so the container and volume names don't depend on the folder name.
+name: snowball
+
 # compose.yaml: the services Snowball needs during development.
 # Start:  docker compose up -d      Stop:  docker compose down
 # Wipe the database completely:     docker compose down -v
-
-name: snowball
 
 services:
   db:

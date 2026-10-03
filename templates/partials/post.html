@@ -1,20 +1,17 @@
 {{/*
   post.html: one row in any list of posts. Expects a postView.
   Rank numbers come from a CSS counter; lists with class "unranked" hide them.
-  The vote arrows don't do anything yet: votes are slice four.
+  The score sits between the vote arrows (partials/votes.html).
 */}}
 {{define "post"}}
 <li class="post">
   <span class="rank"></span>
-  <div class="votes">
-    <button type="button" aria-label="Upvote">&#9650;</button>
-    <button type="button" aria-label="Downvote">&#9660;</button>
-  </div>
+  {{template "votes" .Vote}}
   <div class="body">
     <a class="title" href="{{.Href}}"{{if .Link}} rel="nofollow ugc noopener"{{end}}>{{.Title}}</a>
     {{if .Domain}}<span class="domain">({{.Domain}})</span>{{end}}
     <span class="tags">{{range .Tags}}<a class="tag" href="/t/{{.}}">{{.}}</a>{{end}}</span>
-    <p class="meta">{{.Score}} points | {{.Posted.Format "2006-01-02 15:04"}} by
+    <p class="meta">{{.Posted.Format "2006-01-02 15:04"}} by
       {{if .AuthorDeleted}}<span class="author-deleted">[deleted]</span>
       {{else}}<span class="anon {{.ColorClass}}">{{.Author}}</span>{{end}}
       | <a href="/p/{{.PublicID}}">{{.Comments}} {{if eq .Comments 1}}comment{{else}}comments{{end}}</a>

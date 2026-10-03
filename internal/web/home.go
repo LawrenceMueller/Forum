@@ -49,16 +49,29 @@ func navFor(r *http.Request, current string) navData {
 	return navData{Current: current, LoggedIn: ok}
 }
 
-// views turns store posts into display-ready ones.
-func views(posts []store.Post, showLastActivity bool) []postView {
+// postViews turns store posts into display-ready ones, with vote arrows
+// showing which ones the viewer has already voted on.
+func (s *Server) postViews(r *http.Request, posts []store.Post, showLastActivity bool) ([]postView, error) {
+	viewer := s.voteViewerFor(r)
+	ids := make([]int64, len(posts))
+	for i, p := range posts {
+		ids[i] = p.ID
+	}
+	mine, err := s.myVotes(r, viewer, store.VotePost, ids)
+	if err != nil {
+		return nil, err
+	}
+
 	out := make([]postView, 0, len(posts))
 	for _, p := range posts {
 		v := toPostView(p)
 		// "last reply" only means something once a post has comments.
 		v.ShowLastReply = showLastActivity && p.CommentCount > 0
+		v.Vote = viewer.widget("post", p.PublicID, p.Score, mine[p.ID],
+			p.Author, p.AuthorDeleted, p.Removed || p.Deleted, false)
 		out = append(out, v)
 	}
-	return out
+	return out, nil
 }
 
 // ---- the front page ----
@@ -92,12 +105,22 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	popularViews, err := s.postViews(r, popular, false)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	activeViews, err := s.postViews(r, active, true)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
 
 	data := homePage{
 		basePage:   newBasePage(r, "front page"),
 		Nav:        navFor(r, "front"),
-		Popular:    views(popular, false),
-		Active:     views(active, true),
+		Popular:    popularViews,
+		Active:     activeViews,
 		MoreActive: next != nil,
 		Tags:       tags,
 	}
@@ -190,13 +213,18 @@ func (s *Server) renderList(w http.ResponseWriter, r *http.Request, spec listSpe
 		serverError(w, err)
 		return
 	}
+	postViews, err := s.postViews(r, posts, spec.sort == store.SortActive)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
 
 	data := listPage{
 		basePage:    newBasePage(r, strings.ToLower(spec.heading)),
 		Nav:         navFor(r, spec.nav),
 		Heading:     spec.heading,
 		Description: spec.description,
-		Posts:       views(posts, spec.sort == store.SortActive),
+		Posts:       postViews,
 		EmptyText:   spec.emptyText,
 		Tags:        tags,
 	}

@@ -76,6 +76,7 @@ type commentNode struct {
 	ContinueURL   string // replies continue on another page
 	CanReply      bool
 	RemoveToken   string // set when the viewer is the admin
+	Vote          voteWidget
 
 	// used while building and sorting, not by templates
 	id, parentID int64
@@ -92,6 +93,9 @@ type treeOptions struct {
 	isAdmin     bool
 	removeToken string
 	rootID      int64  // build from this comment down; 0 for the whole post
+	postClosed  bool   // the post was removed or deleted: no voting on its comments
+	viewer      voteViewer
+	myVotes     map[int64]int // the viewer's votes, by comment ID
 }
 
 func newCommentNode(c store.Comment, o treeOptions) *commentNode {
@@ -129,6 +133,10 @@ func newCommentNode(c store.Comment, o treeOptions) *commentNode {
 	}
 
 	n.CanReply = o.canComment && !c.Deleted && !c.Removed
+	if !n.hidden {
+		n.Vote = o.viewer.widget("comment", c.PublicID, c.Upvotes-c.Downvotes, o.myVotes[c.ID],
+			c.Author, c.AuthorDeleted, c.Removed || c.Deleted || o.postClosed, true)
+	}
 	if o.isAdmin && !c.Removed {
 		n.RemoveToken = o.removeToken
 	}
@@ -253,7 +261,12 @@ func (s *Server) renderReplyPage(w http.ResponseWriter, r *http.Request, start t
 	parentID := ""
 	if parent != nil {
 		parentID = parent.PublicID
-		node := newCommentNode(*parent, treeOptions{postID: post.PublicID, isAdmin: u.IsAdmin})
+		// Arrows on the replied-to comment work, but don't show the viewer's
+		// earlier vote (one comment isn't worth an extra lookup here).
+		node := newCommentNode(*parent, treeOptions{
+			postID: post.PublicID, isAdmin: u.IsAdmin,
+			postClosed: post.Removed || post.Deleted, viewer: s.voteViewerFor(r),
+		})
 		data.Parent = node
 	}
 	data.Form = s.newReplyForm(post.PublicID, parentID, body)
@@ -455,19 +468,25 @@ func (s *Server) handleCommentThread(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sortMode := commentSort(r)
+	opts, err := s.treeOptionsFor(r, post, sortMode, root.ID, comments)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
 	data := threadPage{
 		basePage:  newBasePage(r, "thread"),
 		PostID:    post.PublicID,
 		PostTitle: post.Title,
-		Comments:  buildTree(comments, s.treeOptionsFor(r, post, sortMode, root.ID)),
+		Comments:  buildTree(comments, opts),
 		Sort:      sortMode,
 	}
 	data.Generated = time.Since(start)
 	s.render(w, "commentthread.html", data)
 }
 
-// treeOptionsFor gathers what tree building needs to know about the viewer.
-func (s *Server) treeOptionsFor(r *http.Request, post store.Post, sortMode string, rootID int64) treeOptions {
+// treeOptionsFor gathers what tree building needs to know about the viewer,
+// including which of these comments they've voted on.
+func (s *Server) treeOptionsFor(r *http.Request, post store.Post, sortMode string, rootID int64, comments []store.Comment) (treeOptions, error) {
 	u, loggedIn := userFrom(r.Context())
 	o := treeOptions{
 		sort:       sortMode,
@@ -475,11 +494,23 @@ func (s *Server) treeOptionsFor(r *http.Request, post store.Post, sortMode strin
 		canComment: loggedIn && !post.Removed && !post.Deleted,
 		isAdmin:    u.IsAdmin,
 		rootID:     rootID,
+		postClosed: post.Removed || post.Deleted,
+		viewer:     s.voteViewerFor(r),
 	}
 	if u.IsAdmin {
 		o.removeToken = s.formToken(formRemoveComment)
 	}
-	return o
+
+	ids := make([]int64, len(comments))
+	for i, c := range comments {
+		ids[i] = c.ID
+	}
+	mine, err := s.myVotes(r, o.viewer, store.VoteComment, ids)
+	if err != nil {
+		return treeOptions{}, err
+	}
+	o.myVotes = mine
+	return o, nil
 }
 
 // ---- admin removal ----

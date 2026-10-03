@@ -12,7 +12,7 @@
       </section>
 
       {{/* front page = hybrid: a few popular posts, then the bump-ordered stream */}}
-      <h2 class="section-title">Popular today <span>most points in the last 24 hours</span></h2>
+      <h2 class="section-title">Popular today <span>well-liked and rising, from the last 24 hours</span></h2>
       {{if .Popular}}
       <ol class="posts">
         {{range .Popular}}{{template "post" .}}{{end}}

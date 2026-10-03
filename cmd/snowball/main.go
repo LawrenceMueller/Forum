@@ -25,6 +25,10 @@ import (
 // which should only ever happen on your own machine.
 const devDatabaseURL = "postgres://snowball:snowball-dev-only@localhost:5432/snowball?sslmode=disable"
 
+// Only used when SNOWBALL_VOTE_SECRET isn't set. Never use this in production:
+// anyone who has read this code knows it.
+const devVoteSecret = "snowball-dev-only-vote-secret-do-not-use-in-production"
+
 func main() {
 	url := os.Getenv("DATABASE_URL")
 	if url == "" {
@@ -49,7 +53,16 @@ func main() {
 
 	// Only set SNOWBALL_TRUST_PROXY=1 when running behind Caddy (or another
 	// reverse proxy). See web.Config.
-	cfg := web.Config{TrustProxy: os.Getenv("SNOWBALL_TRUST_PROXY") == "1"}
+	voteSecret := os.Getenv("SNOWBALL_VOTE_SECRET")
+	if voteSecret == "" {
+		log.Println("SNOWBALL_VOTE_SECRET not set, using the development vote secret")
+		voteSecret = devVoteSecret
+	}
+
+	cfg := web.Config{
+		TrustProxy: os.Getenv("SNOWBALL_TRUST_PROXY") == "1",
+		VoteSecret: voteSecret,
+	}
 
 	site, err := web.New(st, cfg)
 	if err != nil {

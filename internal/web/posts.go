@@ -235,6 +235,7 @@ type postView struct {
 	Comments      int
 	LastActivity  time.Time
 	ShowLastReply bool // lists sorted by activity show when the last reply came
+	Vote          voteWidget
 }
 
 func toPostView(p store.Post) postView {
@@ -318,11 +319,26 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 
 	u, loggedIn := userFrom(r.Context())
 	sortMode := commentSort(r)
+	opts, err := s.treeOptionsFor(r, p, sortMode, 0, comments)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+
+	view := toPostView(p)
+	myPostVote, err := s.myVotes(r, opts.viewer, store.VotePost, []int64{p.ID})
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	view.Vote = opts.viewer.widget("post", p.PublicID, p.Score, myPostVote[p.ID],
+		p.Author, p.AuthorDeleted, p.Removed || p.Deleted, true)
+
 	data := postPage{
 		basePage:    newBasePage(r, p.Title),
-		Post:        toPostView(p),
+		Post:        view,
 		IsAdmin:     u.IsAdmin,
-		Comments:    buildTree(comments, s.treeOptionsFor(r, p, sortMode, 0)),
+		Comments:    buildTree(comments, opts),
 		CommentSort: sortMode,
 		LoggedIn:    loggedIn,
 		Locked:      p.Removed || p.Deleted,

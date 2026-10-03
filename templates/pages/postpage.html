@@ -23,13 +23,16 @@
       {{else}}{{.Title}}{{end}}
     </h1>
 
+    <div class="post-byline">
+    {{template "votes" .Vote}}
     <p class="meta">
-      {{.Score}} points | {{.Posted.Format "2006-01-02 15:04"}} by
+      {{.Posted.Format "2006-01-02 15:04"}} by
       {{if .AuthorDeleted}}<span class="author-deleted">[deleted]</span>
       {{else}}<span class="anon {{.ColorClass}}">{{.Author}}</span>{{end}}
       {{if .Edited}}| edited{{end}}
       <span class="tags">{{range .Tags}}<a class="tag" href="/t/{{.}}">{{.}}</a>{{end}}</span>
     </p>
+    </div>
 
     {{if .BodyHTML}}<div class="post-body">{{.BodyHTML}}</div>{{end}}
   </article>

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -12,9 +13,10 @@ var ErrUsernameTaken = errors.New("username already taken")
 
 // User is an account as the rest of the app sees it.
 type User struct {
-	ID       int64
-	Username string
-	IsAdmin  bool // set by hand in psql, never through the site
+	ID        int64
+	Username  string
+	IsAdmin   bool // set by hand in psql, never through the site
+	CreatedAt time.Time
 }
 
 // UsernameTaken is the courtesy check used when offering a name.
@@ -117,7 +119,11 @@ func (s *Store) ChangePassword(ctx context.Context, userID int64, newHash string
 // DeleteAccount soft-deletes a user in one transaction: the password hash is
 // wiped and the row marked deleted (so the username stays taken forever),
 // and the recovery codes and sessions are removed outright.
-func (s *Store) DeleteAccount(ctx context.Context, userID int64) error {
+//
+// voter is the account's vote fingerprint. Its votes keep counting, but their
+// fingerprints are swapped for random values, so they can never be traced
+// back to the account, even by someone holding the vote secret.
+func (s *Store) DeleteAccount(ctx context.Context, userID int64, voter string) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -137,6 +143,15 @@ func (s *Store) DeleteAccount(ctx context.Context, userID int64) error {
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
 		return err
+	}
+	// Cut the account's votes loose: they keep counting, but nothing links
+	// them to anyone anymore. (Table names are fixed strings, not input.)
+	for _, table := range []string{"post_votes", "comment_votes"} {
+		if _, err := tx.Exec(ctx,
+			`UPDATE `+table+` SET voter = gen_random_uuid()::text WHERE voter = $1`, voter,
+		); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

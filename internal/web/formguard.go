@@ -43,6 +43,10 @@ var (
 
 	// Admin actions: no minimum (a quick click is fine), but still need a token.
 	formRemovePost    = formRule{"remove-post", 0, "/"}
+
+	// Votes: one click is all it takes, so no minimum, but a token is still
+	// required, so votes only come from someone who loaded the page.
+	formVote = formRule{"vote", 0, "/"}
 	formRemoveComment = formRule{"remove-comment", 0, "/"}
 
 	// Login has no minimum: password managers can fill and submit it in

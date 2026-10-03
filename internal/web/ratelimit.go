@@ -29,6 +29,7 @@ const (
 	maxTrackedKeys = 50_000
 	overflowKey    = "overflow"
 
+	// Idle buckets are forgotten to save memory, but never sooner than this.
 	bucketIdleTimeout = 15 * time.Minute
 )
 
@@ -36,6 +37,13 @@ type limiter struct {
 	name  string
 	every time.Duration // one token refills every this long
 	burst int           // bucket size
+
+	// forgetAfter is how long a bucket must sit unused before it's dropped.
+	// A forgotten visitor comes back with a FULL bucket, so this must be at
+	// least the time an empty bucket takes to refill completely. Otherwise
+	// slow limits (like 3 accounts, then one per 20 minutes) could be reset
+	// just by waiting a while.
+	forgetAfter time.Duration
 
 	mu      sync.Mutex
 	buckets map[string]*bucket
@@ -48,7 +56,11 @@ type bucket struct {
 }
 
 func newLimiter(name string, every time.Duration, burst int) *limiter {
-	l := &limiter{name: name, every: every, burst: burst, buckets: make(map[string]*bucket)}
+	l := &limiter{
+		name: name, every: every, burst: burst,
+		forgetAfter: max(bucketIdleTimeout, every*time.Duration(burst)),
+		buckets:     make(map[string]*bucket),
+	}
 	go l.cleanupLoop()
 	return l
 }
@@ -108,7 +120,7 @@ func (l *limiter) cleanupLoop() {
 	for range time.Tick(time.Minute) {
 		l.mu.Lock()
 		for key, b := range l.buckets {
-			if time.Since(b.lastSeen) > bucketIdleTimeout {
+			if time.Since(b.lastSeen) > l.forgetAfter {
 				delete(l.buckets, key)
 			}
 		}
@@ -188,9 +200,21 @@ func friendlyDuration(d time.Duration) string {
 		}
 		return fmt.Sprintf("%d seconds", n)
 	}
-	n := int(math.Ceil(d.Minutes()))
-	if n == 1 {
-		return "1 minute"
+	mins := int(math.Ceil(d.Minutes()))
+	if mins < 60 {
+		return plural(mins, "minute")
 	}
-	return fmt.Sprintf("%d minutes", n)
+	hours, mins := mins/60, mins%60
+	if mins == 0 {
+		return plural(hours, "hour")
+	}
+	return plural(hours, "hour") + " " + plural(mins, "minute")
+}
+
+// plural writes "1 minute", "2 minutes", and so on.
+func plural(n int, unit string) string {
+	if n == 1 {
+		return "1 " + unit
+	}
+	return fmt.Sprintf("%d %ss", n, unit)
 }

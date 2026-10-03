@@ -63,6 +63,40 @@ func TestLimiterBurstThenBlock(t *testing.T) {
 	}
 }
 
+func TestFriendlyDuration(t *testing.T) {
+	cases := map[time.Duration]string{
+		500 * time.Millisecond:  "1 second",
+		40 * time.Second:        "40 seconds",
+		90 * time.Second:        "2 minutes",
+		time.Hour:               "1 hour",
+		144 * time.Minute:       "2 hours 24 minutes",
+		61 * time.Minute:        "1 hour 1 minute",
+		5 * time.Hour:           "5 hours",
+	}
+	for d, want := range cases {
+		if got := friendlyDuration(d); got != want {
+			t.Errorf("friendlyDuration(%v) = %q, want %q", d, got, want)
+		}
+	}
+}
+
+func TestForgetAfterCoversARefill(t *testing.T) {
+	// A slow limit must not be forgotten (and so reset to full) before its
+	// bucket would have refilled anyway.
+	slow := newLimiter("slow", 20*time.Minute, 3)
+	if slow.forgetAfter != time.Hour {
+		t.Errorf("3 tokens at 20 minutes each refill in 1h, but forgetAfter = %v", slow.forgetAfter)
+	}
+	daily := newLimiter("daily", 24*time.Hour/250, 250)
+	if daily.forgetAfter < 24*time.Hour-time.Minute {
+		t.Errorf("a daily budget must be remembered for a day, got %v", daily.forgetAfter)
+	}
+	fast := newLimiter("fast", time.Second, 5)
+	if fast.forgetAfter != bucketIdleTimeout {
+		t.Errorf("fast limits keep the minimum idle time, got %v", fast.forgetAfter)
+	}
+}
+
 func TestLimiterStatus(t *testing.T) {
 	l := newLimiter("test", time.Hour, 3)
 

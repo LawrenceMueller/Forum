@@ -186,7 +186,7 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.DeleteAccount(ctx, u.ID); err != nil {
+	if err := s.store.DeleteAccount(ctx, u.ID, s.voters.Voter(u.ID)); err != nil {
 		serverError(w, err)
 		return
 	}

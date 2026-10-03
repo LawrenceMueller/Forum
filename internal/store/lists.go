@@ -18,8 +18,21 @@ const (
 	SortNew     Sort = iota // newest first
 	SortActive              // most recent activity first (bump order)
 	SortTop                 // most points in the last 7 days
-	SortPopular             // most points in the last 24 hours
+	SortPopular             // "hot" ranking, among the last 24 hours' posts (not paginated)
 )
+
+// hotRank is Reddit's "hot" formula, as SQL. Two parts, added together:
+//
+//   - the score on a logarithmic scale: going from 1 to 10 points counts as
+//     much as going from 10 to 100, so early votes matter most, and a post
+//     can't win just by having been around to collect more of them;
+//   - the post's age: newer posts start higher. Every 45,000 seconds
+//     (12.5 hours) of age is worth the same as a tenfold change in score.
+//
+// The result: a post taking off now outranks an older one that already
+// peaked, even with fewer total points. Negative scores sink below zero.
+const hotRank = `(sign(p.score)::float8 * log(greatest(abs(p.score), 1)::float8)
+	+ extract(epoch FROM p.created_at)::float8 / 45000)`
 
 // Cursor marks where a page of posts ended, so the next page can start
 // right after it. Value is the sort key of the last post shown (a time in
@@ -95,8 +108,9 @@ func (s *Store) ListPosts(ctx context.Context, opt ListOptions) (posts []Post, n
 		key = "p.score"
 		where = append(where, "p.created_at > now() - interval '7 days'")
 	case SortPopular:
-		key = "p.score"
+		key = hotRank
 		where = append(where, "p.created_at > now() - interval '24 hours'")
+		opt.After = nil // a short list, never paginated
 	}
 	timeKey := opt.Sort == SortNew || opt.Sort == SortActive
 

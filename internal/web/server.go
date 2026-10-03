@@ -17,6 +17,11 @@ type Config struct {
 	// read from the X-Forwarded-For header. Never set it without a proxy in
 	// front, or anyone could claim any IP just by sending that header.
 	TrustProxy bool
+
+	// VoteSecret keys the fingerprints stored with votes instead of account
+	// IDs (see auth.VoterKeys). At least 32 characters. It must stay the same
+	// across restarts, and must never be stored in the database.
+	VoteSecret string
 }
 
 // Server holds everything handlers share.
@@ -24,6 +29,7 @@ type Server struct {
 	store      *store.Store
 	names      *auth.NameSigner // signs generated usernames on the sign-up page
 	forms      *auth.FormTokens // signs form timestamps (see formguard.go)
+	voters     *auth.VoterKeys  // turns account IDs into vote fingerprints
 	pages      map[string]*template.Template
 	trustProxy bool
 	limits     rateLimits
@@ -44,6 +50,10 @@ type rateLimits struct {
 	posting  *limiter // actually publishing a post, per ACCOUNT (key "user:<id>")
 	comment    *limiter // submitting the comment form, per IP
 	commenting *limiter // actually publishing a comment, per ACCOUNT
+	vote         *limiter // vote clicks, per IP
+	voting       *limiter // vote clicks, per ACCOUNT: the fast limit
+	votingDaily  *limiter // per ACCOUNT: the daily budget
+	votingAuthor *limiter // per ACCOUNT per AUTHOR: votes on one person's content
 }
 
 func newRateLimits() rateLimits {
@@ -58,6 +68,10 @@ func newRateLimits() rateLimits {
 		posting:  newLimiter("posting", 5*time.Minute, 5), // 5 posts at once, then one per 5 minutes
 		comment:    newLimiter("comment", 3*time.Second, 20),
 		commenting: newLimiter("commenting", 30*time.Second, 10), // 10 at once, then one per 30s
+		vote:         newLimiter("vote", 3*time.Second, 30),   // 30 at once, then one per 3s
+		voting:       newLimiter("voting", 3*time.Second, 10), // 10 at once, then one per 3s
+		votingDaily:  newLimiter("voting-daily", 24*time.Hour/250, 250), // 250 a day, rolling
+		votingAuthor: newLimiter("voting-author", 24*time.Hour/10, 10),  // 10 a day per author
 	}
 }
 
@@ -70,10 +84,15 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	voters, err := auth.NewVoterKeys(cfg.VoteSecret)
+	if err != nil {
+		return nil, err
+	}
 	s := &Server{
 		store:      st,
 		names:      names,
 		forms:      forms,
+		voters:     voters,
 		trustProxy: cfg.TrustProxy,
 		limits:     newRateLimits(),
 		logins:     newLoginGuard(),
@@ -127,6 +146,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /submit", s.limit(lim.submit, noStore(s.handleSubmit)))
 	mux.HandleFunc("GET /p/{id}", s.handlePost)
 	mux.Handle("POST /p/{id}/remove", noStore(s.handleRemovePost))
+
+	// Votes.
+	mux.Handle("POST /vote", s.limit(lim.vote, noStore(s.handleVote)))
 
 	// Comments.
 	mux.Handle("POST /p/{id}/comment", s.limit(lim.comment, noStore(s.handleComment)))

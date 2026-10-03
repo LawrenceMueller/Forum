@@ -1,0 +1,34 @@
+{{/*
+  votes.html: the arrows and score for one post or comment. Expects a voteWidget.
+
+  With htmx, clicking an arrow swaps just this block for the updated one.
+  Without JavaScript, the form submits normally and comes back to "back".
+  Logged out, the arrows link to the login page.
+*/}}
+{{define "votes"}}
+<div class="votes{{if .Inline}} inline{{end}}" id="v-{{.Kind}}-{{.ID}}">
+  {{if .CanVote}}
+  <form method="post" action="/vote" hx-post="/vote" hx-target="#v-{{.Kind}}-{{.ID}}" hx-swap="outerHTML">
+    {{template "formguard" .Token}}
+    <input type="hidden" name="kind" value="{{.Kind}}">
+    <input type="hidden" name="id" value="{{.ID}}">
+    <input type="hidden" name="back" value="{{.Back}}">
+    {{if .Inline}}<input type="hidden" name="inline" value="1">{{end}}
+    <button type="submit" name="dir" value="up" aria-label="Upvote"
+            aria-pressed="{{if eq .Mine 1}}true{{else}}false{{end}}"{{if eq .Mine 1}} class="voted"{{end}}>&#9650;</button>
+    <span class="score">{{.Score}}</span>
+    <button type="submit" name="dir" value="down" aria-label="Downvote"
+            aria-pressed="{{if eq .Mine -1}}true{{else}}false{{end}}"{{if eq .Mine -1}} class="voted"{{end}}>&#9660;</button>
+  </form>
+  {{else if not .LoggedIn}}
+  <a class="vote-off" href="/login" title="Log in to vote" aria-label="Log in to vote">&#9650;</a>
+  <span class="score">{{.Score}}</span>
+  <a class="vote-off" href="/login" title="Log in to vote" aria-label="Log in to vote">&#9660;</a>
+  {{else}}
+  <span class="vote-off" title="{{.Reason}}" aria-hidden="true">&#9650;</span>
+  <span class="score" title="{{.Reason}}">{{.Score}}</span>
+  <span class="vote-off" title="{{.Reason}}" aria-hidden="true">&#9660;</span>
+  {{end}}
+  {{if .Note}}<span class="vote-note" role="status">{{.Note}}</span>{{end}}
+</div>
+{{end}}
