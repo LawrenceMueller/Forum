@@ -44,9 +44,29 @@
   </form>
   {{end}}
 
-  <section class="comments">
-    <h2 class="section-title">Comments</h2>
-    <p class="hint">Comments are coming soon.</p>
+  {{if or (not .Post.Removed) .IsAdmin}}
+  <section class="comments" id="comments">
+    <h2 class="section-title">{{.Post.Comments}} {{if eq .Post.Comments 1}}comment{{else}}comments{{end}}</h2>
+
+    {{if .Locked}}
+    <p class="hint">This post is closed to new comments.</p>
+    {{else if .LoggedIn}}
+    {{template "replyform" .CommentForm}}
+    {{else}}
+    <p class="hint"><a href="/login">Log in</a> or <a href="/signup">make an account</a> to comment.</p>
+    {{end}}
+
+    {{if .Comments}}
+    <p class="comment-sort">sorted by:
+      {{if eq .CommentSort "best"}}<strong>best</strong>{{else}}<a href="?sort=best#comments">best</a>{{end}} |
+      {{if eq .CommentSort "new"}}<strong>new</strong>{{else}}<a href="?sort=new#comments">new</a>{{end}} |
+      {{if eq .CommentSort "old"}}<strong>old</strong>{{else}}<a href="?sort=old#comments">old</a>{{end}}
+    </p>
+    <div class="comment-tree">
+      {{range .Comments}}{{template "comment" .}}{{end}}
+    </div>
+    {{end}}
   </section>
+  {{end}}
 </main>
 {{end}}

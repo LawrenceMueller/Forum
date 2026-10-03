@@ -42,6 +42,8 @@ type rateLimits struct {
 	recover  *limiter // submitting the recovery form
 	submit   *limiter // submitting the new-post form, per IP
 	posting  *limiter // actually publishing a post, per ACCOUNT (key "user:<id>")
+	comment    *limiter // submitting the comment form, per IP
+	commenting *limiter // actually publishing a comment, per ACCOUNT
 }
 
 func newRateLimits() rateLimits {
@@ -54,6 +56,8 @@ func newRateLimits() rateLimits {
 		recover:  newLimiter("recover", time.Minute, 5),
 		submit:   newLimiter("submit", 6*time.Second, 10),
 		posting:  newLimiter("posting", 5*time.Minute, 5), // 5 posts at once, then one per 5 minutes
+		comment:    newLimiter("comment", 3*time.Second, 20),
+		commenting: newLimiter("commenting", 30*time.Second, 10), // 10 at once, then one per 30s
 	}
 }
 
@@ -123,6 +127,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /submit", s.limit(lim.submit, noStore(s.handleSubmit)))
 	mux.HandleFunc("GET /p/{id}", s.handlePost)
 	mux.Handle("POST /p/{id}/remove", noStore(s.handleRemovePost))
+
+	// Comments.
+	mux.Handle("POST /p/{id}/comment", s.limit(lim.comment, noStore(s.handleComment)))
+	mux.Handle("GET /p/{id}/c/{cid}/reply", noStore(s.handleReplyForm))
+	mux.HandleFunc("GET /p/{id}/c/{cid}", s.handleCommentThread)
+	mux.Handle("POST /p/{id}/c/{cid}/remove", noStore(s.handleRemoveComment))
 
 	mux.Handle("GET /account", noStore(s.handleAccount))
 	mux.Handle("POST /account/password", s.limit(lim.login, noStore(s.handleChangePassword)))

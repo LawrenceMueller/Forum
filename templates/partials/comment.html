@@ -1,0 +1,56 @@
+{{/*
+  comment.html: one comment and, by calling itself, all its replies.
+  Expects a commentNode.
+
+  Each comment is a <details> element: clicking its header line folds it
+  (and everything under it) away, with no JavaScript. The "open" attribute
+  means it starts expanded.
+*/}}
+{{define "comment"}}
+<details class="comment" id="c-{{.PublicID}}" open>
+  <summary class="comment-meta">
+    {{if .Placeholder}}<span class="author-deleted">{{.Placeholder}}</span>
+    {{else if .AuthorDeleted}}<span class="author-deleted">[deleted]</span>
+    {{else}}<span class="anon {{.ColorClass}}">{{.Author}}</span>{{end}}
+    <span>{{.Score}} {{if or (eq .Score 1) (eq .Score -1)}}point{{else}}points{{end}}</span>
+    | <a class="permalink" href="/p/{{.PostID}}#c-{{.PublicID}}">{{.Posted.Format "2006-01-02 15:04"}}</a>
+    {{- if .Edited}} | edited{{end}}
+    {{- if .ReplyingTo}} | replying to {{.ReplyingTo}}{{end}}
+  </summary>
+
+  <div class="comment-content">
+    {{if .AdminSeesGone}}<p class="admin-note">removed: only you, as admin, can see this</p>{{end}}
+
+    {{if .Placeholder}}
+    <p class="comment-gone">{{.Placeholder}}</p>
+    {{else}}
+    <div class="comment-body">{{.BodyHTML}}</div>
+    {{end}}
+
+    {{if or .CanReply .RemoveToken}}
+    <div class="comment-actions">
+      {{if .CanReply}}
+      <a href="/p/{{.PostID}}/c/{{.PublicID}}/reply"
+         hx-get="/p/{{.PostID}}/c/{{.PublicID}}/reply"
+         hx-target="#reply-{{.PublicID}}">reply</a>
+      {{end}}
+      {{if .RemoveToken}}
+      <form class="inline-form" method="post" action="/p/{{.PostID}}/c/{{.PublicID}}/remove">
+        {{template "formguard" .RemoveToken}}
+        <button class="linklike admin-link" type="submit">remove</button>
+      </form>
+      {{end}}
+    </div>
+    <div class="reply-slot" id="reply-{{.PublicID}}"></div>
+    {{end}}
+
+    {{if .Children}}
+    <div class="replies{{if not .Indent}} flat{{end}}">
+      {{range .Children}}{{template "comment" .}}{{end}}
+    </div>
+    {{end}}
+
+    {{if .ContinueURL}}<p class="continue"><a href="{{.ContinueURL}}">continue this thread</a></p>{{end}}
+  </div>
+</details>
+{{end}}

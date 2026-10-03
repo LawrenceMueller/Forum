@@ -278,6 +278,13 @@ type postPage struct {
 	Post        postView
 	IsAdmin     bool
 	RemoveToken string
+
+	// comments
+	Comments    []*commentNode
+	CommentSort string
+	LoggedIn    bool
+	Locked      bool // removed or deleted posts take no new comments
+	CommentForm replyForm
 }
 
 // Public IDs are exactly 8 characters of a-z and 2-7. Anything else can't
@@ -303,11 +310,25 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, _ := userFrom(r.Context())
+	comments, err := s.store.CommentsForPost(r.Context(), p.ID)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+
+	u, loggedIn := userFrom(r.Context())
+	sortMode := commentSort(r)
 	data := postPage{
-		basePage: newBasePage(r, p.Title),
-		Post:     toPostView(p),
-		IsAdmin:  u.IsAdmin,
+		basePage:    newBasePage(r, p.Title),
+		Post:        toPostView(p),
+		IsAdmin:     u.IsAdmin,
+		Comments:    buildTree(comments, s.treeOptionsFor(r, p, sortMode, 0)),
+		CommentSort: sortMode,
+		LoggedIn:    loggedIn,
+		Locked:      p.Removed || p.Deleted,
+	}
+	if loggedIn && !data.Locked {
+		data.CommentForm = s.newReplyForm(p.PublicID, "", "")
 	}
 	if p.Removed && !u.IsAdmin {
 		data.Title = "removed post" // don't leak a removed title into the tab

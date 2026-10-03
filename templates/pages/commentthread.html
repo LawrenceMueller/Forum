@@ -1,0 +1,16 @@
+{{/* commentthread.html: "continue this thread", one comment and everything under it. */}}
+{{define "content"}}
+<main class="thread">
+  <p class="backlink"><a href="/p/{{.PostID}}">&larr; back to the full thread: "{{.PostTitle}}"</a></p>
+
+  <p class="comment-sort">sorted by:
+    {{if eq .Sort "best"}}<strong>best</strong>{{else}}<a href="?sort=best">best</a>{{end}} |
+    {{if eq .Sort "new"}}<strong>new</strong>{{else}}<a href="?sort=new">new</a>{{end}} |
+    {{if eq .Sort "old"}}<strong>old</strong>{{else}}<a href="?sort=old">old</a>{{end}}
+  </p>
+
+  <div class="comment-tree">
+    {{range .Comments}}{{template "comment" .}}{{end}}
+  </div>
+</main>
+{{end}}

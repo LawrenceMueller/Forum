@@ -38,8 +38,12 @@ var (
 	formDelete   = formRule{"delete", 2 * time.Second, "/account"}
 	formSubmit   = formRule{"submit", 5 * time.Second, "/submit"} // nobody writes a post in under 5s
 
+	// "Ha, same" is a real comment, so the minimum is short.
+	formComment = formRule{"comment", 2 * time.Second, "/"}
+
 	// Admin actions: no minimum (a quick click is fine), but still need a token.
-	formRemovePost = formRule{"remove-post", 0, "/"}
+	formRemovePost    = formRule{"remove-post", 0, "/"}
+	formRemoveComment = formRule{"remove-comment", 0, "/"}
 
 	// Login has no minimum: password managers can fill and submit it in
 	// well under a second, and slowing them down would push people toward

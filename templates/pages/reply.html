@@ -1,0 +1,25 @@
+{{/*
+  reply.html: writing a comment on its own page. Used when JavaScript is
+  off, and to show what went wrong after a failed submission.
+*/}}
+{{define "content"}}
+<main class="thread">
+  <p class="backlink"><a href="/p/{{.PostID}}">&larr; back to "{{.PostTitle}}"</a></p>
+
+  {{if .Parent}}
+  <h1 class="section-title">Replying to</h1>
+  <div class="reply-context">{{template "comment" .Parent}}</div>
+  {{else}}
+  <h1 class="section-title">Commenting on "{{.PostTitle}}"</h1>
+  {{end}}
+
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  {{template "replyform" .Form}}
+</main>
+{{end}}

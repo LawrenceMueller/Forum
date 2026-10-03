@@ -1,0 +1,18 @@
+{{/*
+  replyform.html: the box for writing a comment. Expects a replyForm.
+  Used under the post, slotted in under a comment by htmx, and on the
+  standalone reply page.
+*/}}
+{{define "replyform"}}
+<form class="form reply-form" method="post" action="/p/{{.PostID}}/comment">
+  {{template "formguard" .FormToken}}
+  {{if .ParentID}}<input type="hidden" name="parent" value="{{.ParentID}}">{{end}}
+  <div class="field">
+    <label for="body-{{if .ParentID}}{{.ParentID}}{{else}}post{{end}}" class="visually-hidden">Your comment</label>
+    <textarea id="body-{{if .ParentID}}{{.ParentID}}{{else}}post{{end}}" name="body"
+              rows="{{if .ParentID}}4{{else}}5{{end}}" maxlength="10000" required>{{.Body}}</textarea>
+  </div>
+  <button class="button" type="submit">{{if .ParentID}}reply{{else}}comment{{end}}</button>
+  <span class="hint">Markdown works here, just like in posts.</span>
+</form>
+{{end}}

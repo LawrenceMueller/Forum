@@ -813,3 +813,136 @@ main { min-width: 0; }
   padding: 0.35rem 0;
   border-bottom: 1px dotted var(--rule);
 }
+
+/* read by screen readers, invisible on screen (e.g. the comment box's label) */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- comments ---------- */
+
+.comments { margin-top: 0.5rem; }
+.comments > .section-title { margin-bottom: 0.75rem; }
+
+.reply-form { margin-bottom: 1rem; padding: 0.6rem; }
+.reply-form .field { margin-bottom: 0.5rem; }
+.reply-form .hint { margin-left: 0.6rem; }
+
+.comment-sort {
+  margin: 0 0 0.75rem;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.comment { margin: 0 0 0.6rem; }
+
+/* the header line doubles as the fold/unfold control */
+.comment-meta {
+  display: block;       /* hides the browser's own triangle... */
+  list-style: none;
+  font-size: 0.85em;
+  color: var(--muted);
+  cursor: pointer;
+}
+.comment-meta::-webkit-details-marker { display: none; } /* ...in Safari too */
+
+/* ...and shows an old-web [-] / [+] instead */
+.comment-meta::before {
+  content: "[\2013]";
+  display: inline-block;
+  margin-right: 0.35rem;
+  font-family: ui-monospace, Consolas, monospace;
+  color: var(--muted);
+}
+.comment:not([open]) > .comment-meta::before { content: "[+]"; }
+.comment:not([open]) > .comment-meta { opacity: 0.75; }
+
+.comment-meta .permalink { color: var(--muted); }
+
+.comment-content { padding-left: 0.1rem; }
+
+.comment-body {
+  margin: 0.2rem 0 0.25rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.comment-body p { margin: 0 0 0.5rem; }
+.comment-body > :last-child { margin-bottom: 0; }
+.comment-body blockquote {
+  margin: 0 0 0.5rem;
+  padding-left: 0.7rem;
+  border-left: 3px solid var(--rule);
+  color: var(--muted);
+}
+.comment-body code {
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  font-size: 0.95em;
+  padding: 0 0.2em;
+  background: var(--shade);
+}
+.comment-body pre {
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.7rem;
+  overflow-x: auto;
+  background: var(--shade);
+  border: 1px solid var(--rule);
+}
+.comment-body pre code { padding: 0; background: none; }
+.comment-body ul,
+.comment-body ol { margin: 0 0 0.5rem; padding-left: 1.4rem; }
+
+.comment-gone {
+  margin: 0.2rem 0;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.comment-actions {
+  display: flex;
+  gap: 0.8rem;
+  font-size: 0.8em;
+}
+.comment-actions a { color: var(--muted); }
+.admin-link { color: #9e2a2a; font-size: inherit; }
+.admin-note {
+  margin: 0.2rem 0;
+  font-size: 0.8em;
+  color: #9e2a2a;
+}
+
+.reply-slot:empty { display: none; }
+.reply-slot .reply-form { margin: 0.5rem 0 0; }
+
+/* replies: a thin line on the left instead of a wide margin */
+.replies {
+  margin: 0.5rem 0 0 0.35rem;
+  padding-left: 0.8rem;
+  border-left: 1px solid var(--rule);
+}
+/* past the indent limit, replies sit flush with their parent
+   (and say who they're replying to instead) */
+.replies.flat {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.continue { margin: 0.3rem 0 0; font-size: 0.85em; }
+
+.backlink { margin: 0 0 1rem; font-size: 0.9em; }
+.reply-context {
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--shade);
+  border: 1px solid var(--rule);
+}
+
+/* phones: tighter indents, so deep threads keep a readable width */
+@media (max-width: 40rem) {
+  .replies { margin-left: 0.15rem; padding-left: 0.5rem; }
+}
