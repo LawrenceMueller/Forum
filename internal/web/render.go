@@ -26,6 +26,18 @@ type basePage struct {
 	User        string // empty means logged out
 	HideAccount bool   // true on sign up / log in, where the links would be redundant
 	Generated   time.Duration
+
+	// The "up" link at the top of the page: where this page sits in the
+	// site's structure, so it always goes to the same sensible place however
+	// someone arrived. Empty on top-level pages.
+	UpURL   string
+	UpLabel string
+}
+
+// withUp sets the page's "up" link: newBasePage(r, "...").withUp("/account", "your account").
+func (b basePage) withUp(url, label string) basePage {
+	b.UpURL, b.UpLabel = url, label
+	return b
 }
 
 // newBasePage fills in the layout's data, including who's logged in

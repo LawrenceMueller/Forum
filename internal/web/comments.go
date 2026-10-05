@@ -256,7 +256,7 @@ func (s *Server) renderReplyPage(w http.ResponseWriter, r *http.Request, start t
 
 	u, _ := userFrom(r.Context())
 	data := replyPage{
-		basePage:  newBasePage(r, "reply"),
+		basePage:  newBasePage(r, "reply").withUp("/p/"+post.PublicID, "back to the post"),
 		PostID:    post.PublicID,
 		PostTitle: post.Title,
 		Errors:    errs,
@@ -477,7 +477,7 @@ func (s *Server) handleCommentThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := threadPage{
-		basePage:  newBasePage(r, "thread"),
+		basePage:  newBasePage(r, "thread").withUp("/p/"+post.PublicID, "back to the full thread"),
 		PostID:    post.PublicID,
 		PostTitle: post.Title,
 		Comments:  buildTree(comments, opts),

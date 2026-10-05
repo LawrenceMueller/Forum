@@ -123,7 +123,10 @@ func (s *Store) ChangePassword(ctx context.Context, userID int64, newHash string
 // voter is the account's vote fingerprint. Its votes keep counting, but their
 // fingerprints are swapped for random values, so they can never be traced
 // back to the account, even by someone holding the vote secret.
-func (s *Store) DeleteAccount(ctx context.Context, userID int64, voter string) error {
+//
+// With eraseContent, every post and comment the account wrote is erased too
+// (see eraseAllContent), all in the same transaction.
+func (s *Store) DeleteAccount(ctx context.Context, userID int64, voter string, eraseContent bool) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -143,6 +146,11 @@ func (s *Store) DeleteAccount(ctx context.Context, userID int64, voter string) e
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, userID); err != nil {
 		return err
+	}
+	if eraseContent {
+		if err := eraseAllContent(ctx, tx, userID); err != nil {
+			return err
+		}
 	}
 	// Cut the account's votes loose: they keep counting, but nothing links
 	// them to anyone anymore. (Table names are fixed strings, not input.)

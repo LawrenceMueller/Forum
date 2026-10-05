@@ -25,7 +25,7 @@ var loginNotices = map[string]string{
 }
 
 func loginBase(r *http.Request) basePage {
-	b := newBasePage(r, "log in")
+	b := newBasePage(r, "log in").withUp("/", "front page")
 	b.HideAccount = true
 	return b
 }

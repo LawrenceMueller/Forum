@@ -67,6 +67,11 @@
     {{end}}
   </header>
 
+  {{if .UpURL}}
+  {{/* The "up" link: always the page's logical parent, same spot on every page. */}}
+  <nav class="upnav" aria-label="Up"><a href="{{.UpURL}}">&larr; {{.UpLabel}}</a></nav>
+  {{end}}
+
   {{template "content" .}}
 
   <footer class="footer">

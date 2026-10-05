@@ -106,7 +106,7 @@ func offerFailed(w http.ResponseWriter, err error) {
 
 // signupBase is the layout data for every version of the sign-up page.
 func signupBase(r *http.Request) basePage {
-	b := newBasePage(r, "sign up")
+	b := newBasePage(r, "sign up").withUp("/", "front page")
 	b.HideAccount = true
 	return b
 }
@@ -276,6 +276,8 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 			clearOfferCookie(w) // the name is taken now, by them
 			base := signupBase(r)
 			base.Title = "welcome"
+			// No "up" link here: the only way on should be "I've saved them".
+			base.UpURL, base.UpLabel = "", ""
 			data := welcomePage{basePage: base, Username: name, ColorClass: colorClass(name), Codes: codes}
 			data.Generated = time.Since(start)
 			s.render(w, "welcome.html", data)

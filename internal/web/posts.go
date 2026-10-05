@@ -50,7 +50,7 @@ func (s *Server) renderSubmit(w http.ResponseWriter, r *http.Request, start time
 	for _, t := range tags {
 		form.Tags = append(form.Tags, tagChoice{ID: t.ID, Name: t.Name, Checked: checked[t.ID]})
 	}
-	form.basePage = newBasePage(r, "new post")
+	form.basePage = newBasePage(r, "new post").withUp("/", "front page")
 	form.FormToken = s.formToken(formSubmit)
 	form.Generated = time.Since(start)
 	s.render(w, "submit.html", form)
@@ -268,7 +268,13 @@ func toPostView(p store.Post) postView {
 			v.Domain = strings.TrimPrefix(u.Hostname(), "www.")
 		}
 	}
-	if p.AuthorDeleted {
+	if p.Deleted {
+		// Deleted by its author: the title stays (so the discussion makes
+		// sense), but the text and link are already erased, and the author
+		// is shown as [deleted].
+		v.AuthorDeleted = true
+	}
+	if v.AuthorDeleted {
 		v.Author = "" // the retired name is never shown
 	} else {
 		v.ColorClass = colorClass(p.Author)
@@ -339,7 +345,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		p.Removed || p.Deleted, p.CreatedAt)
 
 	data := postPage{
-		basePage:    newBasePage(r, p.Title),
+		basePage:    newBasePage(r, p.Title).withUp("/", "front page"),
 		Post:        view,
 		IsAdmin:     u.IsAdmin,
 		Comments:    buildTree(comments, opts),

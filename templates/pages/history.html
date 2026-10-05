@@ -1,0 +1,79 @@
+{{/*
+  history.html: everything the viewer has written. Private: only its owner
+  can ever see it.
+
+  Each delete control is a <details> element: clicking "delete" opens a
+  confirmation with the real button, so one stray click can't delete
+  anything, and no JavaScript is needed.
+*/}}
+{{define "content"}}
+<main class="narrow history">
+  <h1 class="page-title">Your posts and comments</h1>
+  <p class="lede">Only you can see this page. Deleting something erases its text for good.</p>
+
+  <nav class="history-tabs" aria-label="Show">
+    {{if eq .Show "posts"}}<strong>posts</strong>{{else}}<a href="/account/history?show=posts">posts</a>{{end}}
+    |
+    {{if eq .Show "comments"}}<strong>comments</strong>{{else}}<a href="/account/history?show=comments">comments</a>{{end}}
+  </nav>
+
+  {{if eq .Show "posts"}}
+    {{if .Posts}}
+    <ul class="history-list">
+      {{range .Posts}}
+      <li>
+        <a class="history-title" href="/p/{{.PublicID}}">{{.Title}}</a>
+        <p class="meta">{{.CreatedAt.Format "2006-01-02 15:04"}} | {{.Score}} points
+          | {{.CommentCount}} {{if eq .CommentCount 1}}comment{{else}}comments{{end}}
+          {{if .Removed}}| <span class="removed-label">removed by the admin</span>{{end}}</p>
+        <details class="delete-control">
+          <summary>delete</summary>
+          <form method="post" action="/p/{{.PublicID}}/delete">
+            {{template "formguard" $.DeleteToken}}
+            <input type="hidden" name="back" value="{{$.Back}}">
+            <p>Delete this post for good? Its text, link, and your name are erased. The title
+              stays, so any discussion under it still makes sense.</p>
+            <button class="button button-danger" type="submit">delete post</button>
+          </form>
+        </details>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="empty">{{if .FirstURL}}No older posts.{{else}}You haven't posted anything yet.{{end}}</p>
+    {{end}}
+  {{else}}
+    {{if .Comments}}
+    <ul class="history-list">
+      {{range .Comments}}
+      <li>
+        <p class="history-snippet">{{.Snippet}}</p>
+        <p class="meta">on <a href="/p/{{.PostID}}#c-{{.PublicID}}">{{.PostTitle}}</a>
+          | {{.CreatedAt.Format "2006-01-02 15:04"}} | {{.Score}} points
+          {{if .Removed}}| <span class="removed-label">removed by the admin</span>{{end}}</p>
+        <details class="delete-control">
+          <summary>delete</summary>
+          <form method="post" action="/p/{{.PostID}}/c/{{.PublicID}}/delete">
+            {{template "formguard" $.DeleteToken}}
+            <input type="hidden" name="back" value="{{$.Back}}">
+            <p>Delete this comment for good? Its text and your name are erased. Any replies
+              stay, under a "[deleted]" placeholder.</p>
+            <button class="button button-danger" type="submit">delete comment</button>
+          </form>
+        </details>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="empty">{{if .FirstURL}}No older comments.{{else}}You haven't commented on anything yet.{{end}}</p>
+    {{end}}
+  {{end}}
+
+  {{if or .FirstURL .NextURL}}
+  <nav class="pager" aria-label="Pages">
+    {{if .FirstURL}}<a href="{{.FirstURL}}">back to the start</a>{{else}}<span></span>{{end}}
+    {{if .NextURL}}<a href="{{.NextURL}}">older</a>{{end}}
+  </nav>
+  {{end}}
+</main>
+{{end}}

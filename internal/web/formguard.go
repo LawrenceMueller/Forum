@@ -45,6 +45,9 @@ var (
 	formEditPost    = formRule{"edit-post", 2 * time.Second, "/"}
 	formEditComment = formRule{"edit-comment", time.Second, "/"}
 
+	// Deleting your own post or comment, from the history page.
+	formDeleteItem = formRule{"delete-item", time.Second, "/account/history"}
+
 	// Admin actions: no minimum (a quick click is fine), but still need a token.
 	formRemovePost    = formRule{"remove-post", 0, "/"}
 

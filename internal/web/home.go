@@ -228,6 +228,9 @@ func (s *Server) renderList(w http.ResponseWriter, r *http.Request, spec listSpe
 		EmptyText:   spec.emptyText,
 		Tags:        tags,
 	}
+	if tag != "" {
+		data.basePage = data.basePage.withUp("/tags", "all tags")
+	}
 	if opt.After != nil {
 		data.FirstURL = path
 		if len(posts) == 0 {
@@ -256,7 +259,7 @@ func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
-	data := tagsPage{basePage: newBasePage(r, "tags"), Tags: tags}
+	data := tagsPage{basePage: newBasePage(r, "tags").withUp("/", "front page"), Tags: tags}
 	data.Generated = time.Since(start)
 	s.render(w, "tags.html", data)
 }

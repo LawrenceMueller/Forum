@@ -149,6 +149,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /p/{id}", s.handlePost)
 	mux.Handle("POST /p/{id}/remove", noStore(s.handleRemovePost))
 	mux.Handle("GET /p/{id}/edit", noStore(s.handleEditPostPage))
+	mux.Handle("POST /p/{id}/delete", s.limit(lim.submit, noStore(s.handleDeletePost)))
 	mux.Handle("POST /p/{id}/edit", s.limit(lim.submit, noStore(s.handleEditPost)))
 
 	// Votes.
@@ -160,9 +161,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /p/{id}/c/{cid}", s.handleCommentThread)
 	mux.Handle("POST /p/{id}/c/{cid}/remove", noStore(s.handleRemoveComment))
 	mux.Handle("GET /p/{id}/c/{cid}/edit", noStore(s.handleEditCommentForm))
+	mux.Handle("POST /p/{id}/c/{cid}/delete", s.limit(lim.comment, noStore(s.handleDeleteComment)))
 	mux.Handle("POST /p/{id}/c/{cid}/edit", s.limit(lim.comment, noStore(s.handleEditComment)))
 
 	mux.Handle("GET /account", noStore(s.handleAccount))
+	mux.Handle("GET /account/history", noStore(s.handleHistory))
 	mux.Handle("POST /account/password", s.limit(lim.login, noStore(s.handleChangePassword)))
 	mux.Handle("POST /account/delete", s.limit(lim.login, noStore(s.handleDeleteAccount)))
 	mux.Handle("GET /goodbye", noStore(s.handleGoodbye))

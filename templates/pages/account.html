@@ -17,6 +17,13 @@
   </section>
 
   <section class="panel">
+    <h2>Your posts and comments</h2>
+    <p>See everything you've written, and delete anything you'd rather not have here.
+      Only you can see the list.</p>
+    <p><a class="button" href="/account/history">Your history</a></p>
+  </section>
+
+  <section class="panel">
     <h2>Recovery codes</h2>
     {{if eq .RecoveryCodes 0}}
     <p>You have <strong>no recovery codes left</strong>. If you forget your password, there's no way back
@@ -85,6 +92,12 @@
         <label for="delete-password">Your password</label>
         <input id="delete-password" name="password" type="password" required autocomplete="current-password">
       </div>
+
+      <label class="ack">
+        <input type="checkbox" name="erase_content" value="yes">
+        <span>Also delete everything I've posted. (Optional. Your posts' titles stay, so their
+          discussions still make sense, but all your text and links are erased.)</span>
+      </label>
 
       <label class="ack">
         <input type="checkbox" name="confirm" value="yes" required>

@@ -31,7 +31,7 @@ func (s *Server) renderAccount(w http.ResponseWriter, r *http.Request, u store.U
 		return
 	}
 	data := accountPage{
-		basePage:       newBasePage(r, "your account"),
+		basePage:       newBasePage(r, "your account").withUp("/", "front page"),
 		ColorClass:     colorClass(u.Username),
 		RecoveryCodes:  codes,
 		PasswordErrors: pwErrs,
@@ -186,7 +186,8 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.DeleteAccount(ctx, u.ID, s.voters.Voter(u.ID)); err != nil {
+	eraseContent := r.PostForm.Get("erase_content") == "yes"
+	if err := s.store.DeleteAccount(ctx, u.ID, s.voters.Voter(u.ID), eraseContent); err != nil {
 		serverError(w, err)
 		return
 	}
@@ -197,7 +198,7 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 // GET /goodbye: shown once an account has been deleted.
 func (s *Server) handleGoodbye(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	b := newBasePage(r, "account deleted")
+	b := newBasePage(r, "account deleted").withUp("/", "front page")
 	b.HideAccount = true
 	data := struct{ basePage }{b}
 	data.Generated = time.Since(start)

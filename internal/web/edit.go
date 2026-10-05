@@ -68,7 +68,7 @@ func (s *Server) renderEditPost(w http.ResponseWriter, r *http.Request, start ti
 		return
 	}
 	data := editPostPage{
-		basePage:  newBasePage(r, "edit post"),
+		basePage:  newBasePage(r, "edit post").withUp("/p/"+post.PublicID, "back to the post"),
 		PostID:    post.PublicID,
 		PostTitle: post.Title,
 		Link:      post.URL,
@@ -257,7 +257,7 @@ func (s *Server) showCommentEdit(w http.ResponseWriter, r *http.Request, start t
 		return
 	}
 	data := editCommentPage{
-		basePage:  newBasePage(r, "edit comment"),
+		basePage:  newBasePage(r, "edit comment").withUp("/p/"+post.PublicID, "back to the post"),
 		PostID:    post.PublicID,
 		PostTitle: post.Title,
 		Form:      f,

@@ -35,6 +35,7 @@
     </p>
     </div>
 
+    {{if .Deleted}}<p class="hint">This post was deleted by its author.</p>{{end}}
     {{if .BodyHTML}}<div class="post-body">{{.BodyHTML}}</div>{{end}}
   </article>
   {{end}}

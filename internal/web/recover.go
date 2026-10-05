@@ -18,7 +18,7 @@ type recoverPage struct {
 }
 
 func recoverBase(r *http.Request) basePage {
-	b := newBasePage(r, "recover your account")
+	b := newBasePage(r, "recover your account").withUp("/login", "log in")
 	b.HideAccount = true
 	return b
 }
@@ -130,7 +130,7 @@ func (s *Server) handleRecovered(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := recoveredPage{basePage: newBasePage(r, "account recovered"), Remaining: n}
+	data := recoveredPage{basePage: newBasePage(r, "account recovered").withUp("/", "front page"), Remaining: n}
 	data.Generated = time.Since(start)
 	s.render(w, "recovered.html", data)
 }
