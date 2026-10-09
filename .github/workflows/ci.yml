@@ -1,0 +1,73 @@
+# Continuous integration: on every push and pull request, GitHub starts a
+# fresh Linux machine and runs these checks. Any failure turns the commit's
+# check mark into a red cross.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# The workflow only needs to read the code, nothing more.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # A Postgres container that runs alongside the job, like compose.yaml's
+    # "db" service locally, with the same development credentials.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: snowball
+          POSTGRES_PASSWORD: snowball-dev-only
+          POSTGRES_DB: snowball
+        ports:
+          - 5432:5432
+        # Don't start the steps until Postgres is accepting connections.
+        options: >-
+          --health-cmd "pg_isready -U snowball"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      # The database tests create snowball_test themselves and migrate it.
+      SNOWBALL_TEST_DATABASE_URL: postgres://snowball:snowball-dev-only@localhost:5432/snowball_test?sslmode=disable
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod   # uses the Go version go.mod asks for
+          # (downloaded modules are cached between runs automatically)
+
+      # Cheapest checks first, so mistakes fail fast.
+
+      - name: Formatting (gofmt)
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need 'go fmt ./...':"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Modules are tidy
+        run: go mod tidy -diff
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      # -race: the race detector, which catches goroutines touching shared
+      # data (the rate limiters, the login guard) without a lock.
+      - name: Test (with the race detector)
+        run: go test -race -count=1 ./...
