@@ -40,16 +40,16 @@ type Server struct {
 // rateLimits are per visitor (per IP). The numbers are "one token refills
 // every X, bucket holds Y": Y requests at once, then one per X.
 type rateLimits struct {
-	names    *limiter // loading the sign-up page and rerolling (abuse guard)
-	rerolls  *limiter // the reroll allowance shown on the sign-up page
-	signup   *limiter // submitting the sign-up form (typos and all)
-	accounts *limiter // actually creating an account
-	login    *limiter // submitting the login form
-	recover  *limiter // submitting the recovery form
-	submit   *limiter // submitting the new-post form, per IP
-	posting  *limiter // actually publishing a post, per ACCOUNT (key "user:<id>")
-	comment    *limiter // submitting the comment form, per IP
-	commenting *limiter // actually publishing a comment, per ACCOUNT
+	names        *limiter // loading the sign-up page and rerolling (abuse guard)
+	rerolls      *limiter // the reroll allowance shown on the sign-up page
+	signup       *limiter // submitting the sign-up form (typos and all)
+	accounts     *limiter // actually creating an account
+	login        *limiter // submitting the login form
+	recover      *limiter // submitting the recovery form
+	submit       *limiter // submitting the new-post form, per IP
+	posting      *limiter // actually publishing a post, per ACCOUNT (key "user:<id>")
+	comment      *limiter // submitting the comment form, per IP
+	commenting   *limiter // actually publishing a comment, per ACCOUNT
 	vote         *limiter // vote clicks, per IP
 	voting       *limiter // vote clicks, per ACCOUNT: the fast limit
 	votingDaily  *limiter // per ACCOUNT: the daily budget
@@ -59,18 +59,18 @@ type rateLimits struct {
 
 func newRateLimits() rateLimits {
 	return rateLimits{
-		names:    newLimiter("names", 500*time.Millisecond, 30),
-		rerolls:  newLimiter("rerolls", 6*time.Minute, 10), // 10 rerolls, one more every 6 minutes
-		signup:   newLimiter("signup", 6*time.Second, 10),
-		accounts: newLimiter("accounts", 20*time.Minute, 3),
-		login:    newLimiter("login", 6*time.Second, 10),
-		recover:  newLimiter("recover", time.Minute, 5),
-		submit:   newLimiter("submit", 6*time.Second, 10),
-		posting:  newLimiter("posting", 5*time.Minute, 5), // 5 posts at once, then one per 5 minutes
-		comment:    newLimiter("comment", 3*time.Second, 20),
-		commenting: newLimiter("commenting", 30*time.Second, 10), // 10 at once, then one per 30s
-		vote:         newLimiter("vote", 3*time.Second, 30),   // 30 at once, then one per 3s
-		voting:       newLimiter("voting", 3*time.Second, 10), // 10 at once, then one per 3s
+		names:        newLimiter("names", 500*time.Millisecond, 30),
+		rerolls:      newLimiter("rerolls", 6*time.Minute, 10), // 10 rerolls, one more every 6 minutes
+		signup:       newLimiter("signup", 6*time.Second, 10),
+		accounts:     newLimiter("accounts", 20*time.Minute, 3),
+		login:        newLimiter("login", 6*time.Second, 10),
+		recover:      newLimiter("recover", time.Minute, 5),
+		submit:       newLimiter("submit", 6*time.Second, 10),
+		posting:      newLimiter("posting", 5*time.Minute, 5), // 5 posts at once, then one per 5 minutes
+		comment:      newLimiter("comment", 3*time.Second, 20),
+		commenting:   newLimiter("commenting", 30*time.Second, 10),      // 10 at once, then one per 30s
+		vote:         newLimiter("vote", 3*time.Second, 30),             // 30 at once, then one per 3s
+		voting:       newLimiter("voting", 3*time.Second, 10),           // 10 at once, then one per 3s
 		votingDaily:  newLimiter("voting-daily", 24*time.Hour/250, 250), // 250 a day, rolling
 		votingAuthor: newLimiter("voting-author", 24*time.Hour/10, 10),  // 10 a day per author
 		editing:      newLimiter("editing", 10*time.Second, 20),         // 20 at once, then one per 10s

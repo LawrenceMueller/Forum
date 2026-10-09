@@ -65,13 +65,13 @@ func TestLimiterBurstThenBlock(t *testing.T) {
 
 func TestFriendlyDuration(t *testing.T) {
 	cases := map[time.Duration]string{
-		500 * time.Millisecond:  "1 second",
-		40 * time.Second:        "40 seconds",
-		90 * time.Second:        "2 minutes",
-		time.Hour:               "1 hour",
-		144 * time.Minute:       "2 hours 24 minutes",
-		61 * time.Minute:        "1 hour 1 minute",
-		5 * time.Hour:           "5 hours",
+		500 * time.Millisecond: "1 second",
+		40 * time.Second:       "40 seconds",
+		90 * time.Second:       "2 minutes",
+		time.Hour:              "1 hour",
+		144 * time.Minute:      "2 hours 24 minutes",
+		61 * time.Minute:       "1 hour 1 minute",
+		5 * time.Hour:          "5 hours",
 	}
 	for d, want := range cases {
 		if got := friendlyDuration(d); got != want {

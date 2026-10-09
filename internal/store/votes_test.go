@@ -4,9 +4,9 @@ import "testing"
 
 func TestVoteChange(t *testing.T) {
 	cases := []struct {
-		name               string
-		old, dir           int
-		next, upD, downD   int
+		name             string
+		old, dir         int
+		next, upD, downD int
 	}{
 		{"first upvote", 0, 1, 1, 1, 0},
 		{"first downvote", 0, -1, -1, 0, 1},

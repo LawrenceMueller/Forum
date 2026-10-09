@@ -18,10 +18,10 @@ import (
 // Like rate limits, it's memory only and forgotten on restart.
 
 const (
-	freeFailures  = 3
-	firstBlock    = 30 * time.Second
-	maxBlock      = 5 * time.Minute
-	forgetAfter   = time.Hour // failures older than this are wiped
+	freeFailures = 3
+	firstBlock   = 30 * time.Second
+	maxBlock     = 5 * time.Minute
+	forgetAfter  = time.Hour // failures older than this are wiped
 )
 
 type loginGuard struct {

@@ -9,14 +9,14 @@ import (
 
 func TestSafeBack(t *testing.T) {
 	cases := map[string]string{
-		"/":                        "/",
-		"/p/abcdefgh?sort=new":     "/p/abcdefgh?sort=new",
-		"/new?after=123.4":         "/new?after=123.4",
-		"":                         "/",
-		"https://evil.example":     "/",
-		"//evil.example/path":      "/",
-		`/\evil.example`:           "/",
-		"javascript:alert(1)":      "/",
+		"/":                    "/",
+		"/p/abcdefgh?sort=new": "/p/abcdefgh?sort=new",
+		"/new?after=123.4":     "/new?after=123.4",
+		"":                     "/",
+		"https://evil.example": "/",
+		"//evil.example/path":  "/",
+		`/\evil.example`:       "/",
+		"javascript:alert(1)":  "/",
 	}
 	for in, want := range cases {
 		if got := safeBack(in); got != want {

@@ -91,11 +91,11 @@ type commentNode struct {
 type treeOptions struct {
 	sort        string
 	postID      string
-	canComment  bool   // logged in, and the post isn't locked
+	canComment  bool // logged in, and the post isn't locked
 	isAdmin     bool
 	removeToken string
-	rootID      int64  // build from this comment down; 0 for the whole post
-	postClosed  bool   // the post was removed or deleted: no voting on its comments
+	rootID      int64 // build from this comment down; 0 for the whole post
+	postClosed  bool  // the post was removed or deleted: no voting on its comments
 	viewer      voteViewer
 	myVotes     map[int64]int // the viewer's votes, by comment ID
 }

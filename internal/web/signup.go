@@ -120,9 +120,9 @@ type signupPage struct {
 
 type welcomePage struct {
 	basePage
-	Username string
+	Username   string
 	ColorClass string
-	Codes    []string
+	Codes      []string
 }
 
 // GET /signup: the full page with a freshly generated name.

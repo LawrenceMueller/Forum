@@ -46,21 +46,21 @@ type NewPost struct {
 
 // Post is a post as the rest of the app sees it.
 type Post struct {
-	ID            int64
-	PublicID      string
-	Title         string
-	URL           string
-	Body          string
-	Author        string
-	AuthorDeleted bool
+	ID             int64
+	PublicID       string
+	Title          string
+	URL            string
+	Body           string
+	Author         string
+	AuthorDeleted  bool
 	CreatedAt      time.Time
 	LastActivityAt time.Time  // creation, or the latest comment (bump order)
 	EditedAt       *time.Time // nil if never edited (after the grace period)
-	Score         int
-	CommentCount  int
-	Tags          []string
-	Deleted       bool // by its author
-	Removed       bool // by the admin
+	Score          int
+	CommentCount   int
+	Tags           []string
+	Deleted        bool // by its author
+	Removed        bool // by the admin
 }
 
 // Public IDs are 8 characters of lowercase base32 (a-z, 2-7): 40 random

@@ -78,7 +78,7 @@ func TestTreeNestsAndSortsByTime(t *testing.T) {
 
 func TestTreeSortsByBest(t *testing.T) {
 	a, b, c := cmt(1, 0, 0), cmt(2, 0, 1), cmt(3, 0, 2)
-	a.Upvotes = 1                   // one lonely upvote
+	a.Upvotes = 1                  // one lonely upvote
 	b.Upvotes, b.Downvotes = 10, 1 // well liked
 	// c has no votes and is newest
 
