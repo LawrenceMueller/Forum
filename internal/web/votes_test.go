@@ -17,6 +17,9 @@ func TestSafeBack(t *testing.T) {
 		"//evil.example/path":  "/",
 		`/\evil.example`:       "/",
 		"javascript:alert(1)":  "/",
+		"/\t/evil.example":     "/", // browsers drop the tab: "//evil.example"
+		"/\r/evil.example":     "/",
+		"/p/abc\ndef":          "/",
 	}
 	for in, want := range cases {
 		if got := safeBack(in); got != want {

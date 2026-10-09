@@ -176,34 +176,62 @@ func HashPassword(password string) (string, error) {
 		b64.EncodeToString(salt), b64.EncodeToString(key)), nil
 }
 
-// VerifyPassword re-hashes the attempt with the stored salt and settings
-// and compares the results. It can fail with ErrBusy when the server is
-// flooded, or ErrBadHash if the stored hash is damaged.
-func VerifyPassword(password, encoded string) (bool, error) {
+// Bounds for a stored hash's settings. Real hashes use the values in
+// currentArgon, well inside these. They exist because the numbers come from
+// the database: argon2 PANICS on a time or thread count of zero, and a huge
+// memory value would make it try to allocate gigabytes or terabytes, which
+// kills the whole server, not just one request. So one corrupted row (or a
+// botched manual edit) must be refused, not obeyed. If currentArgon is ever
+// raised, keep it inside these limits.
+const (
+	maxHashMemory  = 256 * 1024 // KiB, i.e. 256 MiB
+	maxHashTime    = 10
+	maxHashThreads = 16
+	minSaltLen     = 8
+	minKeyLen      = 16 // an EMPTY stored hash would otherwise match every password
+	maxKeyLen      = 64
+)
+
+// parseHash reads a stored hash string, refusing anything malformed or
+// outside the bounds above. Fuzzed in fuzz_test.go.
+func parseHash(encoded string) (p argonParams, salt, key []byte, err error) {
 	// "", "argon2id", "v=19", "m=...,t=...,p=...", salt, hash
 	parts := strings.Split(encoded, "$")
-	if len(parts) != 6 || parts[1] != "argon2id" {
-		return false, ErrBadHash
+	if len(parts) != 6 || parts[0] != "" || parts[1] != "argon2id" {
+		return p, nil, nil, ErrBadHash
 	}
 
 	var version int
 	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil || version != argon2.Version {
-		return false, ErrBadHash
+		return p, nil, nil, ErrBadHash
 	}
 
-	var p argonParams
 	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &p.memory, &p.time, &p.threads); err != nil {
-		return false, ErrBadHash
+		return p, nil, nil, ErrBadHash
+	}
+	if p.time < 1 || p.time > maxHashTime ||
+		p.threads < 1 || p.threads > maxHashThreads ||
+		p.memory < 8*uint32(p.threads) || p.memory > maxHashMemory {
+		return p, nil, nil, ErrBadHash
 	}
 
 	b64 := base64.RawStdEncoding
-	salt, err := b64.DecodeString(parts[4])
-	if err != nil {
-		return false, ErrBadHash
+	if salt, err = b64.DecodeString(parts[4]); err != nil || len(salt) < minSaltLen {
+		return p, nil, nil, ErrBadHash
 	}
-	want, err := b64.DecodeString(parts[5])
+	if key, err = b64.DecodeString(parts[5]); err != nil || len(key) < minKeyLen || len(key) > maxKeyLen {
+		return p, nil, nil, ErrBadHash
+	}
+	return p, salt, key, nil
+}
+
+// VerifyPassword re-hashes the attempt with the stored salt and settings
+// and compares the results. It can fail with ErrBusy when the server is
+// flooded, or ErrBadHash if the stored hash is damaged.
+func VerifyPassword(password, encoded string) (bool, error) {
+	p, salt, want, err := parseHash(encoded)
 	if err != nil {
-		return false, ErrBadHash
+		return false, err
 	}
 
 	got, err := idKey(normalizePassword(password), salt, p, uint32(len(want)))

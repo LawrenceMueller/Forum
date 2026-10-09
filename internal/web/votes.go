@@ -86,8 +86,15 @@ func (s *Server) myVotes(r *http.Request, v voteViewer, t store.VoteTarget, ids 
 // safeBack accepts only a path on this site as a return address. Anything
 // else ("//evil.example", "https://...") becomes the front page, so the
 // vote form can't be used to bounce people to another site.
+//
+// Control characters are refused too: browsers silently delete tabs and
+// newlines from a URL before following it, so "/<tab>/evil.example" would
+// become "//evil.example", another site. (Found by FuzzSafeBack.)
 func safeBack(back string) string {
 	if !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") || strings.Contains(back, `\`) {
+		return "/"
+	}
+	if strings.ContainsFunc(back, func(r rune) bool { return r < ' ' || r == 0x7f }) {
 		return "/"
 	}
 	return back
