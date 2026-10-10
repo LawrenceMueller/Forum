@@ -2,7 +2,7 @@
 
 This document is the single place to understand Snowball: what it is, how it is built, what exists today and where it lives in the code, and what is planned. Someone who has never seen the project should be able to read it top to bottom and start working on tickets.
 
-Last updated: after posting slice four (posts, lists and tags, comments, votes), the vote-limit work, and the "hot" ranking for the front page. Next up is editing (section 10.1).
+Last updated: after the testing chapter (database, request-level, smoke, fuzz, concurrency and migration tests; staticcheck and govulncheck; CI; the one-command check script), which followed posting slices five and six and the "up" navigation links. The posting chapter's last slice, images, waits for moderation (section 11.1).
 
 ---
 
@@ -26,18 +26,20 @@ The project is also a learning vehicle for in-demand skills (Go, PostgreSQL, Doc
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Language | Go 1.25 or newer | 1.25 is required for `http.NewCrossOriginProtection` (CSRF defense). |
+| Language | Go 1.25 or newer (developed on 1.27.2) | 1.25 is required for `http.NewCrossOriginProtection` (CSRF defense). Keep up with patch releases: govulncheck flags standard-library holes they fix. |
 | Web layer | Go standard library `net/http` | No framework. Method-and-path routing (`"GET /p/{id}"`). |
 | Templates | Go `html/template` | Auto-escapes all output. Server-rendered HTML. |
 | Interactivity | htmx 2.x (self-hosted) | In-place updates: username reroll, reply forms, vote arrows. |
 | Site JavaScript | `static/js/snowball.js` | Small, plain JS. No inline scripts anywhere (CSP forbids them). |
 | Markdown | `github.com/yuin/goldmark` + `github.com/microcosm-cc/bluemonday` | Render with HTML off, then sanitize against an allowlist. |
 | Database | PostgreSQL 18 (Docker) | Accessed through `pgx` v5 with a connection pool. |
-| Migrations | goose (CLI) | SQL files in `migrations/`, applied in order. |
+| Migrations | goose (CLI) | SQL files in `migrations/`, applied in order. Tests also use goose as a Go library (`internal/testdb`). |
 | Password hashing | argon2id (`golang.org/x/crypto/argon2`) | Wrapped in `internal/auth`. |
 | Unicode normalization | `golang.org/x/text/unicode/norm` | NFKC for passwords. |
 | Rate limiting | `golang.org/x/time/rate` | Token buckets, in memory. |
 | Local infrastructure | Docker Compose | Postgres only, for now. |
+| Checks | gofmt, go vet, staticcheck, govulncheck, the race detector | All run by `scripts/check.ps1`, locally and in CI (section 10). |
+| CI | GitHub Actions | `.github/workflows/ci.yml`: Postgres 18 service, then `scripts/check.ps1`. |
 | Planned production | VPS + Docker Compose + Caddy | Caddy for HTTPS; optionally Anubis in front of the app. |
 
 Go module name: `snowball` (the first line of `go.mod` must be `module snowball`, because internal imports are written as `snowball/internal/...`).
@@ -68,14 +70,16 @@ New clone: `cp .env.example .env` (it holds development values only).
 | Sync dependencies | `go mod tidy` (prints nothing on success) |
 | Format code | `go fmt ./...` |
 | Check code | `go vet ./...` |
-| Run tests | `go test ./...` (add `-v` for names, `-cover` for coverage) |
+| Run every check (what CI runs) | `.\scripts\check.ps1` (section 10) |
+| Quick check while working | `.\scripts\check.ps1 -Quick` (no database tests, no staticcheck/govulncheck) |
+| Run tests only | `go test ./...` (add `-v` for names, `-cover` for coverage, `-short` to skip database tests) |
 | Run the site | `go run ./cmd/snowball` then open http://localhost:8080 |
 | Database shell | `docker compose exec db psql -U snowball` |
 | Database shell (from any folder) | `docker exec -it snowball-db-1 psql -U snowball` |
 | Stop Postgres | `docker compose down` |
 | Wipe the database completely | `docker compose down -v` (destroys all data) |
 
-Before every commit: `go fmt ./...`, `go vet ./...`, `go test ./...`, then `git status` to check `.env` is not staged and new migrations are.
+Before every commit: `go fmt ./...`, then `.\scripts\check.ps1`, then `git status` to check `.env` is not staged and new migrations are.
 
 The server must be started from the project root, because templates and static files are found relative to the current folder. If goose prints its help text instead of running, it couldn't read its settings from `.env` (missing `GOOSE_` lines, or the file saved as UTF-16).
 
@@ -93,14 +97,16 @@ Environment variables read by the Go app (not from `.env`; set in the shell or d
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | Local dev URL (`devDatabaseURL` in `cmd/snowball/main.go`) | Postgres connection string. The fallback is logged when used. |
-| `SNOWBALL_VOTE_SECRET` | A development secret (`devVoteSecret` in main.go), logged when used | Keys the fingerprints stored with votes (section 7.11). At least 32 characters or the app refuses to start. **In production it must be set, kept stable forever, and backed up separately from the database.** Changing it makes everyone's past votes unrecognized as theirs. Generate with `openssl rand -hex 32`. |
+| `SNOWBALL_VOTE_SECRET` | A development secret (`devVoteSecret` in main.go), logged when used | Keys the fingerprints stored with votes (section 7.13). At least 32 characters or the app refuses to start. **In production it must be set, kept stable forever, and backed up separately from the database.** Changing it makes everyone's past votes unrecognized as theirs. Generate with `openssl rand -hex 32`. |
 | `SNOWBALL_TRUST_PROXY` | unset | Set to `1` only when running behind Caddy (or another reverse proxy). Makes the app read the visitor IP from the last `X-Forwarded-For` entry. Never set without a proxy. |
 
 ### Docker notes
 
 `compose.yaml` starts with `name: snowball`, so the Compose project, container (`snowball-db-1`), and volume names stay the same whatever folder the project is in (without it, Compose names everything after the folder, and a renamed folder looks like a different, stopped project). It runs `postgres:18`, binds port `5432` to `127.0.0.1` only, stores data in the named volume `pgdata` mounted at `/var/lib/postgresql` (where Postgres 18 images expect it), and has a `pg_isready` healthcheck.
 
-### Testing tips
+### Manual testing tips
+
+(Automated tests are in section 10.)
 
 Voting needs two accounts (nobody can vote on their own content) that are at least a day old. On a development database, age every account with `UPDATE users SET created_at = now() - interval '2 days';` (never without a `WHERE` anywhere else). Admin rights are granted only in psql: `UPDATE users SET is_admin = true WHERE username = '...';`.
 
@@ -134,6 +140,9 @@ snowball/
       formtokens.go         FormTokens: signed timestamps for anti-bot form checks.
       voters.go             VoterKeys: account ID -> vote fingerprint (HMAC with the vote secret).
     markdown/               Markdown -> sanitized HTML. The only code that returns template.HTML.
+    testdb/                 Test-only helper: finds the project root, creates and migrates a named test
+                            database (Prepare), lists the tables tests empty. Also holds the migration
+                            round-trip test.
     store/                  The only package that talks to Postgres. All SQL lives here.
       store.go              Open (pool + ping + version check), Close.
       users.go              Users: availability, creation, credentials, password change, soft delete.
@@ -143,6 +152,8 @@ snowball/
       lists.go              Post lists with keyset pagination (new, active, top, hot), tag counts, post count.
       comments.go           Loading a post's comments, creating comments, admin removal.
       votes.go              Voting (toggle logic, counts), the viewer's votes, vote state, author lookup.
+      edits.go              Editing posts and comments (window and grace enforced in SQL).
+      deletes.go            Erasing posts and comments, erasing an account's content, history queries.
     web/                    Everything HTTP: server, routes, middleware, handlers, rendering.
       server.go             Server, Config, New, routes and middleware stack, rate limit settings, template funcs.
       render.go             Template loading, basePage, render/renderFragment, serverError, hashError, taglines.
@@ -156,8 +167,11 @@ snowball/
       posts.go              Submit page, post validation, post view preparation, post page, admin removal.
       comments.go           Comment trees (build, prune, sort, depth rules), Wilson score, reply forms, thread pages.
       votes.go              Vote arrows (widgets), who may vote, vote limits, the vote handler.
+      edit.go               Edit pages and handlers, the edit-window helper, the edit limit.
+      history.go            The private history page, deleting your own posts and comments.
       signup.go, login.go, recover.go, account.go   The account flows.
-    (each package also has *_test.go files)
+    (each package also has *_test.go files: *_db_test.go need Postgres, fuzz_test.go hold
+     fuzz targets, web/requests_test.go and web/smoke_test.go drive the whole site; section 10)
   migrations/               goose SQL migrations, numbered. Never edit one that has run; add a new one.
   templates/
     layout.html             Shared frame: head, masthead, account links, footer.
@@ -167,6 +181,8 @@ snowball/
     css/style.css           The only stylesheet. All CSS goes here.
     js/htmx.min.js          Self-hosted htmx.
     js/snowball.js          Site behavior (hidden username toggle).
+  scripts/check.ps1         Every check in one command; CI runs it too (section 10).
+  .github/workflows/ci.yml  GitHub Actions: Postgres service, then scripts/check.ps1.
   docs/PROJECT_CONTEXT.md   This document.
   compose.yaml, .env.example, .gitignore, .gitattributes, README.md, go.mod, go.sum
 ```
@@ -179,7 +195,7 @@ Several files share names across folders (`recovery.go` in both `auth` and `stor
 
 ### Package boundaries
 
-Dependencies flow one way: `cmd/snowball` uses `web` and `store`; `web` uses `store`, `auth`, and `markdown`; `store`, `auth`, and `markdown` depend on nothing internal. Go forbids import cycles, so this direction must be kept.
+Dependencies flow one way: `cmd/snowball` uses `web` and `store`; `web` uses `store`, `auth`, and `markdown`; `store`, `auth`, and `markdown` depend on nothing internal. `testdb` is imported only by test files (in `store` and `web`), never by the app. Go forbids import cycles, so this direction must be kept.
 
 `auth` never sees a request or a database. `store` never sees a raw secret: it receives only hashes and fingerprints (password hashes, token hashes, recovery code hashes, vote fingerprints). `web` translates between them and owns everything user-facing.
 
@@ -202,6 +218,8 @@ At startup, `loadPages` builds one template set per page: `layout.html` + all `p
 `render(w, "page.html", data)` executes the `layout` template. `renderFragment(w, "page.html", "partialName", data)` executes a single partial, which is how htmx endpoints respond (the reroll returns the `username` partial; reply links return `replyform`; votes return `votes`). Both render into a buffer first, so a template error produces a clean 500 instead of half a page. Handlers tell htmx requests apart by the `HX-Request: true` header.
 
 Every page struct embeds `basePage`: `Title`, `Tagline` (random from `taglines` in render.go), `User` (empty when logged out), `HideAccount` (hides the header account links on focused pages), and `Generated` (time spent building the data, shown in the footer).
+
+Every page with a logical parent declares it with `newBasePage(r, "...").withUp(url, label)`, and the layout draws a `← label` "up" link in one consistent spot, just under the yellow bar. It always goes to the page's place in the site's structure (not "back" in browser history), so it works however someone arrived and needs no JavaScript.
 
 Template functions, registered before parsing (`Server.templateFuncs`): `postCount` (the cached number of visible posts) and `commas` (12408 -> "12,408"). The footer uses `{{postCount | commas}}`.
 
@@ -233,7 +251,7 @@ Because the first two are per-process, several app instances could not share the
 
 ## 6. Database schema
 
-The current schema, after migrations 00001 to 00008:
+The current schema, after migrations 00001 to 00009:
 
 ```sql
 CREATE TABLE users (
@@ -283,7 +301,8 @@ CREATE TABLE posts (
     content_hash     text NOT NULL,                          -- for duplicate detection
     deleted_at       timestamptz,                            -- by its author
     removed_at       timestamptz,                            -- by the admin
-    CONSTRAINT score_matches_votes CHECK (score = upvotes - downvotes)
+    CONSTRAINT score_matches_votes CHECK (score = upvotes - downvotes),
+    CONSTRAINT deleted_post_is_erased CHECK (deleted_at IS NULL OR (body = '' AND url IS NULL))
 );  -- indexes: created_at DESC, last_activity_at DESC, author_id, content_hash
 
 CREATE TABLE post_tags (
@@ -299,14 +318,17 @@ CREATE TABLE comments (
     parent_id    bigint REFERENCES comments(id) ON DELETE CASCADE,  -- NULL = top-level
     author_id    bigint NOT NULL REFERENCES users(id),
     depth        integer NOT NULL DEFAULT 0 CHECK (depth >= 0),
-    body         text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 10000),
+    body         text NOT NULL,   -- 1 to 10,000 characters while live; '' once deleted
     created_at   timestamptz NOT NULL DEFAULT now(),
     edited_at    timestamptz,
     upvotes      integer NOT NULL DEFAULT 0,
     downvotes    integer NOT NULL DEFAULT 0,
     content_hash text NOT NULL,
     deleted_at   timestamptz,
-    removed_at   timestamptz
+    removed_at   timestamptz,
+    CONSTRAINT comment_body_length CHECK (char_length(body) <= 10000
+        AND (deleted_at IS NOT NULL OR char_length(body) >= 1)),
+    CONSTRAINT deleted_comment_is_erased CHECK (deleted_at IS NULL OR body = '')
 );  -- indexes: post_id, parent_id, author_id
 
 CREATE TABLE post_votes (
@@ -337,9 +359,10 @@ goose also maintains its own `goose_db_version` table.
 | Title, URL, body, and comment lengths are within limits. | Length checks. |
 | A post's score always equals upvotes minus downvotes. | `score_matches_votes` check. |
 | One vote per account per post or comment. | Primary keys on the votes tables. |
+| Deleted content is erased, not hidden: a deleted post has no body or link (title kept), a deleted comment has no body. | `deleted_post_is_erased`, `deleted_comment_is_erased`. |
 | Codes, sessions, tags links, comments, and votes never outlive their parent row. | `ON DELETE CASCADE` (only fires on hard deletes; soft deletes clean up explicitly). |
 
-Rules enforced in Go rather than the database: 1 to 3 tags per post (a CHECK can't count rows), comment depth = parent depth + 1, no voting on your own content.
+Rules enforced in Go rather than the database: 1 to 3 tags per post (a CHECK can't count rows), comment depth = parent depth + 1, no voting on your own content. The edit window and authorship are enforced inside the edit `UPDATE` statements themselves.
 
 ### Deliberately not stored
 
@@ -357,6 +380,7 @@ Email, IP addresses, user agents, device names, locations, last-login time, logi
 | 00006_create_posts.sql | `users.is_admin`, `tags` (seeded), `posts`, `post_tags`. |
 | 00007_create_comments.sql | `comments`. |
 | 00008_create_votes.sql | `posts.upvotes/downvotes`, `score_matches_votes`, `post_votes`, `comment_votes`. |
+| 00009_erase_deleted_content.sql | `deleted_post_is_erased`; comment body may be empty only when deleted; `deleted_comment_is_erased`. |
 
 ### Query conventions
 
@@ -378,18 +402,23 @@ All queries use `$1`-style placeholders, never string building with input (no SQ
 | GET `/submit`, POST `/submit` | `handleSubmitPage`, `handleSubmit` (posts.go) | noStore; POST: limit `submit` | Login required. |
 | GET `/p/{id}` | `handlePost` (posts.go) | | Post, comments, `?sort=best|new|old`. |
 | POST `/p/{id}/remove` | `handleRemovePost` (posts.go) | noStore | Admin only; others get 404. |
+| GET/POST `/p/{id}/edit` | `handleEditPostPage`, `handleEditPost` (edit.go) | noStore; POST: limit `submit` | Author only (others 404). Text and tags. |
+| POST `/p/{id}/delete` | `handleDeletePost` (history.go) | limit `submit`, noStore | Author only. Erases; returns to `back`. |
 | POST `/p/{id}/comment` | `handleComment` (comments.go) | limit `comment`, noStore | Top-level or reply (`parent` field). |
 | GET `/p/{id}/c/{cid}/reply` | `handleReplyForm` (comments.go) | noStore | htmx: form fragment; otherwise a page. |
 | GET `/p/{id}/c/{cid}` | `handleCommentThread` (comments.go) | | "Continue this thread". |
 | POST `/p/{id}/c/{cid}/remove` | `handleRemoveComment` (comments.go) | noStore | Admin only; others get 404. |
+| GET/POST `/p/{id}/c/{cid}/edit` | `handleEditCommentForm`, `handleEditComment` (edit.go) | noStore; POST: limit `comment` | Author only. htmx: inline form and swap; otherwise a page. |
+| POST `/p/{id}/c/{cid}/delete` | `handleDeleteComment` (history.go) | limit `comment`, noStore | Author only. Erases; returns to `back`. |
 | POST `/vote` | `handleVote` (votes.go) | limit `vote`, noStore | htmx: arrows fragment; otherwise redirect to `back`. |
 | GET/POST `/signup`, GET `/signup/name` | signup.go | limits `names`/`signup`, noStore | |
 | GET/POST `/login`, POST `/logout` | login.go | POST login: limit `login`, noStore | Logout deletes all sessions. |
 | GET `/account`, POST `/account/password`, POST `/account/delete`, GET `/goodbye` | account.go | password/delete: limit `login`, noStore | |
+| GET `/account/history` | `handleHistory` (history.go) | noStore | Private. `?show=posts|comments`, `&after=<cursor>`. |
 | GET/POST `/recover`, GET `/recovered` | recover.go | POST: limit `recover`, noStore | |
 | GET `/static/...` | Go file server | revalidate | |
 
-Linked but not built yet (404): `/about`. Coming with editing: edit pages for posts and comments. Planned: a private post history page under `/account`, `/rules`, `/changelog`. There is no public profile page listing a user's history (section 8).
+Linked but not built yet (404): `/about`. Planned: `/rules`, `/changelog`. There is no public profile page listing a user's history (section 8); the only history view is the owner's private one.
 
 ### 7.2 Sign-up flow
 
@@ -421,11 +450,11 @@ Only the SHA-256 hash of the session token is stored. Expired sessions are rejec
 
 ### 7.6 Account page (`/account`)
 
-Username (masked, with "show name"), recovery codes remaining, change password, delete account. Both forms re-check the current password through `checkCurrentPassword`, which shares the login guard. Change password requires the new one to differ, saves it, and deletes every session including the current one. **Delete account (soft delete)** wipes the password hash, marks the row deleted, removes codes and sessions, and replaces the account's vote fingerprints with random values (its votes keep counting but can never be traced back), all in one transaction. The username is retired forever.
+Username (masked, with "show name"), a link to the private history page, recovery codes remaining, change password, delete account. Both forms re-check the current password through `checkCurrentPassword`, which shares the login guard. Change password requires the new one to differ, saves it, and deletes every session including the current one. **Delete account (soft delete)** wipes the password hash, marks the row deleted, removes codes and sessions, and replaces the account's vote fingerprints with random values (its votes keep counting but can never be traced back), all in one transaction. The username is retired forever. An optional checkbox, "Also delete everything I've posted", erases all of the account's posts and comments in the same transaction (`eraseAllContent`: posts in one statement; comments plus every affected post's count in one `WITH ... UPDATE` statement).
 
 ### 7.7 Password policy (auth/passwords.go)
 
-`PasswordProblems(password, username)` returns phrases that read after "Your password needs to ...": 6 to 128 characters (counted in characters), an uppercase letter, a digit, a symbol, not a common word dressed up with digits/symbols (trims non-letters from the ends, undoes leetspeak, checks a short list), and not containing the username. Passwords are NFKC-normalized before rules, hashing, and verification. Hashes are argon2id PHC strings (`m=19456,t=2,p=1`, 16-byte salt, 32-byte key) with parameters stored per hash. At most 4 hashes run at once; a request waits up to 10 seconds for a slot, otherwise `auth.ErrBusy` becomes a 503 with `Retry-After: 5`.
+`PasswordProblems(password, username)` returns phrases that read after "Your password needs to ...": 6 to 128 characters (counted in characters), an uppercase letter, a digit, a symbol, not a common word dressed up with digits/symbols (trims non-letters from the ends, undoes leetspeak, checks a short list), and not containing the username. Passwords are NFKC-normalized before rules, hashing, and verification. Hashes are argon2id PHC strings (`m=19456,t=2,p=1`, 16-byte salt, 32-byte key) with parameters stored per hash. Verification reads a stored hash through `parseHash`, which refuses anything malformed or out of bounds (memory over 256 MiB, time over 10, threads over 16 or memory below 8 per thread, salt under 8 bytes, key under 16 or over 64 bytes), so a damaged or planted hash can't crash the server, exhaust its memory, or (with an empty key) match every password. Fuzzing found the need for this (section 10). At most 4 hashes run at once; a request waits up to 10 seconds for a slot, otherwise `auth.ErrBusy` becomes a 503 with `Retry-After: 5`.
 
 ### 7.8 Rate limiting (web/ratelimit.go, web/loginguard.go, web/votes.go)
 
@@ -441,6 +470,7 @@ Token buckets held only in memory: "burst" is how many at once, then one more pe
 | `recover` | 5, 1 per min | IP | POST `/recover` |
 | `submit` | 10, 1 per 6s | IP | POST `/submit` |
 | `posting` | 5, 1 per 5 min | account | Inside `handleSubmit`, when publishing |
+| `editing` | 20, 1 per 10s | account | Saving edits to posts and comments |
 | `comment` | 20, 1 per 3s | IP | POST `/p/{id}/comment` |
 | `commenting` | 10, 1 per 30s | account | Inside `handleComment`, when publishing |
 | `vote` | 30, 1 per 3s | IP | POST `/vote` |
@@ -467,6 +497,9 @@ Every form includes `{{template "formguard" .Token}}`: a honeypot input named `h
 | Comment or reply | `formComment` | 2 s |
 | Login | `formLogin` | none (password managers submit instantly) |
 | Vote | `formVote` | none (one click), token still required |
+| Edit post | `formEditPost` | 2 s |
+| Edit comment | `formEditComment` | 1 s |
+| Delete your own post or comment | `formDeleteItem` | 1 s |
 | Admin: remove post, remove comment | `formRemovePost`, `formRemoveComment` | none |
 
 To add a form: add a `formRule`, a token field set via `s.formToken(rule)` wherever the page is built, the `formguard` partial inside the `<form>`, and a `checkForm` call in its POST handler.
@@ -524,9 +557,27 @@ Partials shared by all list pages: `sortnav` (the sort bar, current sort in bold
 
 **Mechanics**: clicking an arrow votes; clicking the same arrow takes the vote back; clicking the other switches (`voteChange`, a small tested pure function returning the new vote and the up/down deltas). `store.Vote` locks the item row, reads the old vote, inserts/updates/deletes it, and adjusts the counts in one transaction. Posts keep `score` in step (enforced by `score_matches_votes`); comments compute `upvotes - downvotes`.
 
-**Display** (`partials/votes.html`, `voteWidget`): up arrow, score, down arrow. Stacked in lists; inline (horizontal) on the post page and in each comment's action row. Your own vote is highlighted (blue up, red down). Arrows link to login when logged out, and are faded with a hover reason when voting isn't possible ("This one's yours.", "New accounts can vote after their first day.", "Voting is closed on this."). With htmx, a click swaps just the widget; notes from refused votes appear under inline arrows, or in a small yellow box beside stacked ones. Without JavaScript, the form submits and returns to the `back` path, which `safeBack` restricts to paths on Snowball (no open redirects).
+**Display** (`partials/votes.html`, `voteWidget`): up arrow, score, down arrow. Stacked in lists; inline (horizontal) on the post page and in each comment's action row. Your own vote is highlighted (blue up, red down). Arrows link to login when logged out, and are faded with a hover reason when voting isn't possible ("This one's yours.", "New accounts can vote after their first day.", "Voting is closed on this."). With htmx, a click swaps just the widget; notes from refused votes appear under inline arrows, or in a small yellow box beside stacked ones. Without JavaScript, the form submits and returns to the `back` path, which `safeBack` restricts to paths on Snowball (no open redirects): it must start with one `/`, contain no backslash, and contain no control characters (browsers silently drop tabs and newlines, which turned `/\t/evil.example` into `//evil.example` until fuzzing caught it).
 
-### 7.14 Site-wide HTTP security (web/headers.go, main.go)
+### 7.14 Editing (web/edit.go, store/edits.go)
+
+Authors can edit for **10 minutes** (`store.EditWindow`). Edits within the first **2 minutes** (`store.EditGrace`) are silent; later ones set `edited_at`, shown as "edited". After 10 minutes the content is final. No revisions are kept.
+
+**Posts:** text and tags only. The **title and link can never be edited** (Reddit's lesson: swapping a link after a post collects votes is a classic spam trick, and changing a title changes what people voted on). The edit page (`/p/{id}/edit`) shows them read-only with a note explaining why, and reuses the shared `tagpicker` partial. **Comments:** text only. With htmx, "edit" swaps the comment's text for a textarea holding the original Markdown; saving swaps the new text back and updates the "edited" marker in the comment's header line via an **out-of-band swap** (the response carries a `<span id="ce-<id>" hx-swap-oob="true">` that htmx puts in place of the matching element). Without JavaScript, editing happens on a small page of its own. "Cancel" just links back to the comment.
+
+The **database clock decides**: `EditPost` and `EditComment` are single `UPDATE`s that only match when the editor is the author, the item isn't removed or deleted, and `created_at > now() - window`; a `CASE` sets `edited_at` only after the grace period. A form held open past the deadline gets "The 10-minute editing window has closed". The window and grace are Go constants passed in as seconds, so the "N minutes left" shown on pages (`editTimeLeft`, `canEdit`) can't drift from the rule. Edit links appear only for the author within the window. Edits re-run the same validation as posting, update the content hash, use the form guard and the `editing` limit, and **don't bump** `last_activity_at` (otherwise re-saving would keep a post on top).
+
+### 7.15 Private history and self-deletion (web/history.go, store/deletes.go)
+
+`/account/history` lists the viewer's own posts or comments (tabs), newest first, 25 per page with keyset pagination by creation time. Items the admin removed appear labeled "removed by the admin" (only to their author); items the author deleted don't appear. Comment entries show a plain-text snippet (`snippet`, first 160 characters).
+
+**Deleting** is offered on each entry as a `<details>` element: "delete" opens a confirmation explaining what happens, and only the red button inside deletes. No JavaScript, and one stray click can't delete anything.
+
+**Deletion erases, it doesn't hide.** `DeletePost` overwrites the body and link (title kept, Reddit's choice, so the discussion under it still makes sense) and sets `deleted_at`. `DeleteComment` overwrites the body and decrements the post's visible comment count. The database enforces that deleted rows are empty (migration 00009), so no bug can leave deleted text behind, and there is no undelete. The rows themselves remain (so threads keep their shape) and still record their author: breaking that link was considered and set aside because it would hinder moderation, such as cleaning up after a spammer. Deleted content gets an empty `content_hash`.
+
+**How deleted content shows:** a deleted post drops out of every list and the post count; its page still loads with its title, "[deleted]" as the author, a note that the author deleted it, and its comments intact. It takes no new comments or votes. A deleted comment with replies shows as "[deleted]" with the replies kept; without replies, it disappears.
+
+### 7.16 Site-wide HTTP security (web/headers.go, main.go)
 
 Headers on every response: `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy: same-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`, and `X-Robots-Tag: noindex, nofollow, noarchive`.
 
@@ -536,15 +587,17 @@ Headers on every response: `Content-Security-Policy: default-src 'self'; script-
 
 Also: CSRF protection; `no-store` on account routes and every logged-in response; form bodies capped with `http.MaxBytesReader` (64 KB, or 256 KB for posts); server timeouts; vague errors to visitors (`serverError`), details to the log.
 
-### 7.15 Privacy and logging
+### 7.17 Privacy and logging
 
 No log line contains passwords, tokens, recovery codes, cookies, IP addresses, or votes (audited). The rate limiter logs only its name and a count; bot detections log only the form name. Database errors may contain usernames, which are public. Postgres logs failing statements with placeholders, not values. A Go handler panic logs the connecting address, which behind Caddy is Caddy's. The account page states that Snowball doesn't know which devices or locations people use.
 
-### 7.16 Front end
+### 7.18 Front end
 
 **Design system (static/css/style.css).** One stylesheet. Tokens on `:root`: `--frost`, `--paper`, `--shade`, `--ink`, `--muted`, `--rule`, `--link`, `--visited`, `--sled` (the single loud accent: yellow rules under the masthead and above the footer), `--note`. Verdana body (14px, 13px on wide screens), Georgia for the wordmark and headings. Thin borders, no shadows or rounded cards. Mobile-first single column; at 50rem and up a fixed-width bordered column (max 60rem) with a sidebar. Touch screens get larger targets via `@media (pointer: coarse)`. `[hidden] { display: none !important; }` guarantees the `hidden` attribute always hides.
 
 **Name colors.** A username's first word is a color; `colorClass` (web/home.go) maps it to `nc-blue` ... `nc-purple` (fallback `nc-x0`..`nc-x3` by hash), and CSS sets `--c` per class. The owner chose vibrant values.
+
+**Navigation.** The logo goes home. Every page with a parent shows a quiet `← label` up link under the yellow bar (section 5, Rendering): posts, account, submit, tags, login, sign-up, goodbye, and recovered go to the front page; tag pages to all tags; history to the account; reply, edit, and thread pages to their post; recovery to login. The front page and sort lists have none (the sort bar covers them), and the welcome page deliberately has none, so its only way on is "I've saved them".
 
 **Hidden username.** The logged-in header shows eight dots plus a "show name" checkbox (shoulder-surfing protection), a boxed **account** button, and log out. snowball.js wires every `.reveal-group` (header and account page), resetting to hidden on `pageshow`.
 
@@ -583,20 +636,105 @@ No log line contains passwords, tokens, recovery codes, cookies, IP addresses, o
 | 10-minute edit window, 2-minute grace, no revisions | Typos fixed silently; later edits marked; then final. One record per item. |
 | Deleted content keeps threads intact; deleted accounts show "[deleted]" | Conversations survive; retired names stop being attached to anything. |
 | "Top" is raw score; "Popular today" is hot | Top means top; popular should favor what's rising now. |
+| Post titles and links can't be edited, only text and tags | Reddit's lesson: link swaps after votes are a spam trick; titles define what was voted on. |
+| Edits don't bump activity | Re-saving shouldn't keep a post on top. |
+| Deleted posts keep their title | Reddit's choice: the discussion underneath needs its context. |
+| Deletion erases content from the database, irreversibly | Store as little as possible; hidden text can still leak through backups or bugs. Authorship links remain, for moderation. |
+| Own removed content stays visible to its author, labeled | Being straightforward with people about their own content. |
+| "Up" links to each page's logical parent, not browser-style "back" | Predictable however someone arrived, no JavaScript; the logo still goes home. |
+| When in doubt, learn from Reddit's battles | Twenty years of fighting spam and manipulation behind its odd-looking rules. |
 
 ---
 
 ## 9. Conventions and gotchas
 
-Restart the server after template changes; CSS/JS changes only need a reload. All CSS goes in `static/css/style.css`: other CSS files are never loaded (snippets must be pasted in, not saved alongside). Template comments `{{/* */}}` never reach the browser; HTML comments `<!-- -->` are sent to every visitor. Never edit a migration that has run anywhere important; add a new numbered one. Run `go mod tidy` after adding or removing imports (silence means success). In psql, statements end with `;` (a `-#` prompt means it's waiting; Ctrl+C clears). Folder = package in Go: exported names start with a capital letter. Lowercase all file and folder names (Windows is case-insensitive, Linux isn't). When CSS seems ignored, check the rule appears in the dev tools Styles panel; if absent, it isn't in the served stylesheet. Tests use table-driven style and inject time rather than sleeping. Go templates don't convert number types: a function taking `int64` can't receive an `int` (why `TagCount.Count` is `int64`). Functions that end with identical lines (like `ChangePassword` and `DeleteAccount`) are easy to edit by mistake; check which function an edit landed in.
-
-**Test coverage today**: `auth` (hashing, damaged hashes, normalization, password rules, busy semaphore, form tokens, voter fingerprints), `markdown` (allowed formatting, blocked dangerous input), `store` (cursor parsing, vote toggling; pure functions only), `web` (clientIP, limiters including forgetting and status, login guard, durations, post validation, tag picking, number formatting, Wilson scores, comment trees and depth rules, safe return paths, who may vote). Handlers and database queries have no tests yet.
+Restart the server after template changes; CSS/JS changes only need a reload. All CSS goes in `static/css/style.css`: other CSS files are never loaded (snippets must be pasted in, not saved alongside). Template comments `{{/* */}}` never reach the browser; HTML comments `<!-- -->` are sent to every visitor. Never edit a migration that has run anywhere important; add a new numbered one. Run `go mod tidy` after adding or removing imports (silence means success). In psql, statements end with `;` (a `-#` prompt means it's waiting; Ctrl+C clears). Folder = package in Go: exported names start with a capital letter. Lowercase all file and folder names (Windows is case-insensitive, Linux isn't). When CSS seems ignored, check the rule appears in the dev tools Styles panel; if absent, it isn't in the served stylesheet. Tests use table-driven style and inject time rather than sleeping (more in section 10). Go templates don't convert number types: a function taking `int64` can't receive an `int` (why `TagCount.Count` is `int64`). Functions that end with identical lines (like `ChangePassword` and `DeleteAccount`) are easy to edit by mistake; check which function an edit landed in. Deleted posts and comments have an empty `content_hash`, so duplicate detection must ignore empty hashes. To test the edit window without waiting, move an item back in time: `UPDATE posts SET created_at = now() - interval '3 minutes' WHERE public_id = '...';`.
 
 ---
 
-## 10. Roadmap and backlog
+## 10. Testing and checks
 
-### 10.1 Posting chapter: status and next slices
+### One command
+
+`.\scripts\check.ps1` runs everything, cheapest first, and stops at the first failure: start Postgres (`docker compose up -d --wait`, skipped in CI), gofmt, `go mod tidy -diff`, `go vet`, staticcheck, govulncheck, `go build`, then `go test -count=1 -race ./...`. CI runs the same script, so a local pass means a CI pass, and the list of checks lives in one place.
+
+| Option | Effect |
+|---|---|
+| `-Quick` | Skips staticcheck, govulncheck, and the database tests (adds `-short`). For use while working. |
+| `-Skip staticcheck` (or `govulncheck`, or both comma-separated) | Leaves out a tool, for example while it's broken upstream or when offline. |
+| `-Fuzz` (with optional `-FuzzSeconds 120`) | After everything else, runs each fuzz target for 20 seconds (or as given). |
+
+The race detector needs cgo and so a C compiler; the script asks `go env CGO_ENABLED` and, without one, tests without `-race` and says so (CI always has it). On Windows, PowerShell refuses downloaded scripts: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, and `Unblock-File` on a script (or on a zip before extracting it) that came from the internet. staticcheck and govulncheck run through `go run ...@latest`, so they need no install and stay current, but a new tool release (or a new Go release the tool can't read yet) can change results without any code change.
+
+### Kinds of tests
+
+| Kind | Where | What it gives |
+|---|---|---|
+| Unit tests | Most `*_test.go` files | Pure logic, no database: password rules, hashing, tokens, limiters, comment trees, Wilson scores, validation, durations. Fast. |
+| Database tests | `store/*_db_test.go` | Every store function against a real Postgres, including the constraints the database enforces. |
+| Concurrency tests | `store/concurrency_db_test.go` | Many goroutines released together by a starting gate (`together`) hit one post, code, or name, then the data must still add up. |
+| Request-level tests | `web/requests_test.go` | The complete handler stack (headers, CSRF protection, sessions, rate limits, routes) driven with `httptest`: real flows, permission boundaries, cross-site refusal. |
+| Smoke tests | `web/smoke_test.go` | Every page as every kind of visitor: expected status, security headers, a complete page (template errors only appear when rendered), `no-store` when logged in; htmx endpoints return fragments. |
+| Fuzz tests | `fuzz_test.go` in `auth`, `web`, `store`, `markdown` | Go's fuzzer generates inputs to break invariants. Seeds run as ordinary tests every time. |
+| Migration round trip | `testdb/testdb_test.go` | Every migration up, all the way down, up again; the schema (columns, constraints, indexes) must come back identical and the down leave nothing behind. |
+
+### Test databases
+
+Database tests need Postgres running (`docker compose up -d`). Each package uses its own database so packages can run in parallel without emptying each other's tables: `snowball_test` (store), `snowball_web_test` (web), `snowball_migrations_test` (the round trip, which never holds data, since some Down sections refuse to run when certain data exists). `testdb.Prepare` creates the database if missing and migrates it up; it refuses any name not ending in `_test`, as a safety catch. The server and credentials come from `SNOWBALL_TEST_DATABASE_URL`, defaulting to the compose development values (`testdb.DefaultURL`); CI sets it for its Postgres service.
+
+Each test starts from empty tables: `freshDB` (store) and `newSite` (web, which also builds a new server, so rate limits start untouched) run `TRUNCATE ... RESTART IDENTITY CASCADE` over `testdb.Tables` (every table except `tags`, which keeps its seeded rows). **When a migration adds a table, add it to `testdb.Tables`.** Tests in one package therefore run one at a time (no `t.Parallel()`).
+
+`go test -short ./...` skips everything that needs Postgres. Each package's `TestMain` prepares its database once, and fails with a hint ("is Postgres running?") when it can't.
+
+### Helpers
+
+**store** (`store/main_test.go`): `freshDB`, `exec`, `count` (one-number queries), `expectConstraint` (a statement must be refused by a named constraint), `mustUser` (recovery code hashes `code-a`, `code-b`), `mustTag`, `mustPost` (tagged `tech`), `mustLoadPost`, `mustComment`, `mustLoadComment`.
+
+**web** (`web/main_test.go`): `newSite`; `s.user` (an account two days old, logged in by creating a session directly, password `Correct-Horse-7!` hashed once for all tests), `s.session` (another device), `young`, `admin`; `s.post`, `s.comment`; `s.token(form)` (a valid form token issued an hour ago, so the "too fast" check never interferes); `s.get`, `s.send`, `s.do` (requests through the whole stack, over an `https://` URL as in production; extra header pairs like `"HX-Request", "true"`); `expectStatus`, `expectRedirect`, `expectContains`, `expectMissing` (these search the body with HTML escapes undone), `sessionCookieFrom`; `sqlExec` to arrange scenes directly.
+
+### Fuzzing
+
+| Target | Package | Invariant |
+|---|---|---|
+| `FuzzParseHash` | auth | Any stored hash string parses within bounds or is refused; never panics. |
+| `FuzzPasswordProblems` | auth | Never panics; an accepted password is within the length limits and doesn't contain the username. |
+| `FuzzSafeBack` | web | The result is a path on Snowball as a browser would read it (after dropping tabs and newlines). |
+| `FuzzParseCursor` | store | Any string is refused or becomes a cursor (ID at least 1) that survives a round trip through its URL form. |
+| `FuzzRender` | markdown | The output, read with a real HTML5 parser (`golang.org/x/net/html`), contains only allowlisted elements and attributes, and links only with allowed schemes. |
+
+Run one with `go test -short -run '^$' -fuzz '^FuzzSafeBack$' -fuzztime 60s ./internal/web` (`-short` because no fuzz target needs the database, and `-run '^$'` so no ordinary tests run first), or all with `.\scripts\check.ps1 -Fuzz`. A failing input is saved under that package's `testdata/fuzz/`; commit it, and it runs as a regular test from then on. Fuzzing found two real bugs: the `safeBack` open redirect through tab and newline characters (section 7.13), and stored-hash parameters that could panic or exhaust memory (section 7.7).
+
+### Concurrency tests and the race detector
+
+The concurrency tests cover: one voter's rapid clicks on one arrow (must all succeed and toggle to nothing), many voters at once (counters match vote rows), many comments at once (comment count matches comments), one recovery code raced from many places (exactly one succeeds), and one name signed up for many times at once (exactly one account, and the losers leave no recovery codes behind). Goroutines can't call `t.Fatal`, so each reports its result on a channel and the test checks them afterwards.
+
+**Break-it exercise:** remove `FOR UPDATE` from the post lock statement in `store/votes.go` and `TestRapidClicksByOneVoter` fails with duplicate-key errors on `post_votes_pkey`, because simultaneous clicks all read "no vote yet" and all insert. Simple `counter = counter + 1` updates are atomic without a lock; the lock matters where code reads, decides, then writes.
+
+`-race` (always on in CI) watches for goroutines touching the same memory without synchronization: the rate limiters, the login guard, the cached post count.
+
+### CI
+
+`.github/workflows/ci.yml` runs on every push and pull request: a Postgres 18 service container with the development credentials, `actions/checkout@v5`, `actions/setup-go@v6` with `go-version: stable` (the newest patch release, so govulncheck doesn't flag holes already fixed), then `pwsh ./scripts/check.ps1`. Each check is a collapsible section of the log. A failed run caused by an outside tool can be re-run from the Actions tab once the tool is fixed, without a new commit. A full run takes about two minutes.
+
+### What's covered
+
+- `auth`: hashing and verification, damaged and unsafe hashes, normalization, password rules, the hashing semaphore, form tokens, voter fingerprints and the vote secret's minimum length.
+- `markdown`: allowed formatting, dangerous input blocked, links `nofollow`, headings flattened to text.
+- `store`: usernames unique forever and well-formed, credentials, sessions, logout everywhere, password change, recovery codes spent exactly once, account deletion (with and without content, including vote unlinking), posts and their database-enforced limits, lists hiding removed and deleted posts, pagination that never skips or repeats, comments and their rules, vote toggling and rules, comment votes and "my votes", vote tables staying private, edit windows and grace, deletion erasing content but keeping threads, history, the database refusing broken data, cursor parsing, and the concurrency cases above.
+- `web`: client IPs, limiters (burst, forgetting, status), the login guard, durations, post validation, tags, number formatting, Wilson scores, comment trees and depth rules, safe return paths, vote widget rules, the edit window, history snippets; and through whole requests: login (including bot checks), logout everywhere, sign-up (including a forged name), logged-out redirects, cross-site refusal, nobody editing or deleting others' work, admin endpoints hidden from everyone else, submitting, commenting and replying, voting; plus the smoke tests of every page and fragment.
+- `testdb`: the migration round trip.
+
+Not covered yet: a red-team bot attacking the defenses from outside, load testing, and the browser side (snowball.js, htmx behavior in a real browser).
+
+### Known tool issue (October 2026)
+
+Go 1.27.2 writes export data that staticcheck 2026.2.1 (v0.8.1) can't read ("export data version 5 is greater than maximum supported version 4"; dominikh/go-tools issue #1832). A fix was announced for release on 9 October 2026. Until it ships, run `.\scripts\check.ps1 -Skip staticcheck` locally, and expect CI's staticcheck section to fail; once a fixed release is out, `@latest` picks it up automatically and the failed CI run can be re-run. Remove this note then.
+
+---
+
+## 11. Roadmap and backlog
+
+### 11.1 Posting chapter: status and next slices
 
 | Slice | Status |
 |---|---|
@@ -604,17 +742,15 @@ Restart the server after template changes; CSS/JS changes only need a reload. Al
 | 2. Real front page, lists, tags, keyset pagination | Done |
 | 3. Comments | Done |
 | 4. Votes, vote limits, hot ranking | Done |
-| 5. Editing | **Next** |
-| 6. Private history page and self-deletion | Planned |
-| 7. Images | Planned |
+| 5. Editing | Done |
+| 6. Private history page and self-deletion | Done |
+| 7. Images | Waiting for moderation (below) |
 
-**Editing (next).** Authors can edit posts and comments for 10 minutes after posting. Edits in the first 2 minutes are silent; later edits set `edited_at` and show the "edited" marker (templates already display it). After 10 minutes the content is final. No revisions stored. Edits need the form guard, re-validation (title, link, body, tags), and a fresh content hash.
+**Images, then audio and video.** Planned work: an upload field on the submit page with size and dimension limits; server-side re-encoding of every upload (decode and save fresh, which strips metadata such as GPS coordinates and neutralizes malicious files; Go's standard library covers JPEG, PNG, and GIF, with `golang.org/x/image` for WebP); no SVG; storage in a folder to start, object storage later; serving with strict content types, ideally from a separate subdomain (with matching CSP changes); thumbnails in lists; no uploads during probation; per-account upload limits; duplicate detection by image hash; admin removal that deletes the file. No third-party embeds; link cards or click-to-load instead.
 
-**Private history page and self-deletion.** A page under `/account`, visible only to its owner, listing everything they've posted and commented, with delete controls. Deleting replaces content and author with "[deleted]" but keeps the item's place (a deleted post's page stays reachable; replies remain). Open detail: whether a deleted post keeps its title. The delete-account form gains an optional "also delete everything I've posted" checkbox. Deleted posts are already excluded from lists and counts; deleted comments already behave as placeholders.
+**Why images wait.** A working report, review, and takedown process must exist before uploads open: anonymous upload sites attract illegal content, the site's operator is responsible for what it hosts, and US providers aware of apparent child sexual abuse material must report it (research the obligations before launch). The leaning is a short moderation chapter first, then images built on it. The alternative is building images now behind a setting that keeps uploads switched off.
 
-**Images, then audio and video.** Requirements when media arrives: server-side re-encoding of every upload (strips metadata such as GPS coordinates, neutralizes malicious files); no SVG; strict content types, ideally served from a separate domain; size limits; no uploads during probation; a working removal and takedown process before uploads open (anonymous upload sites attract illegal content, and US providers aware of apparent child sexual abuse material must report it; research the obligations before launch). No third-party embeds; link cards or click-to-load instead.
-
-**Admin and moderation.** Built so far: removing posts and comments. Still to decide and build: bans (what happens to a banned account's content), and the full moderation system (reports, queues, shadowbans, one-click cleanup of an account and everything it posted).
+**Moderation chapter (proposed next).** Built so far: the admin can remove posts and comments. To decide and build: reports (users flag a post or comment with a reason), an admin queue to review them, bans (and what happens to a banned account's content), shadowbans, and one-click cleanup of an account and everything it posted.
 
 Anti-bot layers still to build into posting:
 
@@ -629,7 +765,7 @@ Anti-bot layers still to build into posting:
 | Downvote-specific budget | Held in reserve |
 | Vote ring detection | With moderation |
 
-### 10.2 Security switches (build when needed or before launch)
+### 11.2 Security switches (build when needed or before launch)
 
 **ALTCHA (proof-of-work on sign-up).** Self-hosted, privacy-first. Serve the widget's *external* build (component, worker, CSS as separate files from `static/`, so the strict CSP needs no `blob:` or inline styles), add `GET /altcha/challenge` (rate limited, no-store) using `github.com/altcha-org/altcha-lib-go`, place the widget in the sign-up form with auto-solve on page load, verify in `handleSignup` beside `checkForm`, and remember spent solutions in memory (replay protection). Match the widget version to the protocol the Go library supports (v1 hash-based vs v2 key-derivation). Needs HTTPS or localhost. Makes sign-up require JavaScript. About half a day.
 
@@ -639,11 +775,11 @@ Anti-bot layers still to build into posting:
 
 **Members-only reading.** The switch for when the user base is strong: reading requires an account, per page type.
 
-### 10.3 Production and deployment checklist
+### 11.3 Production and deployment checklist
 
 VPS with Docker Compose running Postgres, Snowball, and Caddy (automatic HTTPS). Set `DATABASE_URL` with real credentials, **`SNOWBALL_VOTE_SECRET` (32+ random characters, stable forever, backed up separately from the database)**, and `SNOWBALL_TRUST_PROXY=1`. HSTS via Caddy. Caddy access logs off or scrubbed of IPs. Nightly `pg_dump` backups shipped off the server (without the vote secret alongside). Embed templates and static files into the binary with Go's `embed`. Versioned static URLs with long caching, replacing `revalidate`. Styled 429 and 503 pages. Optionally Anubis. Optionally a trap link for crawlers that ignore `robots.txt`. Rewrite or remove the placeholder admin note.
 
-### 10.4 Smaller backlog items
+### 11.4 Smaller backlog items
 
 | Item | Notes |
 |---|---|
@@ -656,6 +792,8 @@ VPS with Docker Compose running Postgres, Snowball, and Caddy (automatic HTTPS).
 | Recovery code regeneration | Deliberately deferred; the owner leans against it. |
 | Single-use form tokens | Currently reusable within 2 hours. |
 | Comment paging | Threads over 2,000 comments are truncated today. |
+| Delete from the post page | Deleting is offered only on the history page today; a delete control beside "edit" on your own posts and comments would be a small addition. |
 | Hot ranking for more lists | Only "Popular today" uses it; a `/hot` list or tag-page option could follow. |
 | sqlc | Considered; on Windows its Postgres parser needs cgo, so run it via Docker if adopted. |
-| Tests | Store tests against a test Postgres (including account deletion unlinking votes), handler tests, and a red-team bot to attack the defenses. |
+| More testing | A red-team bot to attack the defenses from outside; load testing before launch; browser tests if the JavaScript grows. |
+| Pinned tool versions | staticcheck and govulncheck run `@latest`. If upstream surprises become a nuisance, pin them with Go's `tool` directive in go.mod (`go get -tool ...`) and run them with `go tool`. |

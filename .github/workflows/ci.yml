@@ -51,38 +51,10 @@ jobs:
           go-version: stable
           # (downloaded modules are cached between runs automatically)
 
-      # Cheapest checks first, so mistakes fail fast.
-
-      - name: Formatting (gofmt)
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "These files need 'go fmt ./...':"
-            echo "$unformatted"
-            exit 1
-          fi
-
-      - name: Modules are tidy
-        run: go mod tidy -diff
-
-      - name: Vet
-        run: go vet ./...
-
-      # A stricter checker than vet: unused code, suspicious patterns,
-      # deprecated functions, simplifications.
-      - name: Staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
-
-      # Checks every dependency, and the Go standard library, against Go's
-      # database of known security holes. It only fails for holes in code
-      # Snowball actually calls, so it stays quiet about the rest.
-      - name: Known vulnerabilities (govulncheck)
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
-
-      - name: Build
-        run: go build ./...
-
-      # -race: the race detector, which catches goroutines touching shared
-      # data (the rate limiters, the login guard) without a lock.
-      - name: Test (with the race detector)
-        run: go test -race -count=1 ./...
+      # Every check lives in scripts/check.ps1, which you run locally too,
+      # so CI and your machine can never drift apart. (PowerShell comes
+      # preinstalled on GitHub's Linux machines.) Inside, each check is a
+      # collapsible section of this step's log.
+      - name: Every check (scripts/check.ps1)
+        shell: pwsh
+        run: ./scripts/check.ps1
