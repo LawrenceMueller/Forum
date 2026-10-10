@@ -39,12 +39,16 @@ jobs:
 
     steps:
       - name: Check out the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod   # uses the Go version go.mod asks for
+          # The newest stable Go, with every security patch. (go.mod's
+          # version is only the minimum; building with exactly that release
+          # would make govulncheck report standard-library holes that newer
+          # patch releases have already fixed.)
+          go-version: stable
           # (downloaded modules are cached between runs automatically)
 
       # Cheapest checks first, so mistakes fail fast.
@@ -63,6 +67,17 @@ jobs:
 
       - name: Vet
         run: go vet ./...
+
+      # A stricter checker than vet: unused code, suspicious patterns,
+      # deprecated functions, simplifications.
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+
+      # Checks every dependency, and the Go standard library, against Go's
+      # database of known security holes. It only fails for holes in code
+      # Snowball actually calls, so it stays quiet about the rest.
+      - name: Known vulnerabilities (govulncheck)
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
       - name: Build
         run: go build ./...

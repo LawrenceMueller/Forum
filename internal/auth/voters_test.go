@@ -13,7 +13,11 @@ func TestVoterFingerprints(t *testing.T) {
 	}
 	b, _ := NewVoterKeys(strings.Repeat("b", 32))
 
-	if a.Voter(7) != a.Voter(7) {
+	// Two separate calls, compared: written as a.Voter(7) != a.Voter(7),
+	// staticcheck flags it as a typo, since identical expressions on both
+	// sides usually are one.
+	first, again := a.Voter(7), a.Voter(7)
+	if first != again {
 		t.Error("the same account must always get the same fingerprint")
 	}
 	if a.Voter(7) == a.Voter(8) {
