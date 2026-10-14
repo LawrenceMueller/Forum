@@ -12,44 +12,31 @@ import (
 
 	"snowball/internal/markdown"
 	"snowball/internal/store"
+	"snowball/internal/tags"
 )
 
 const (
 	maxTitleLen = 200
 	maxURLLen   = 2000
 	maxBodyLen  = 40000
-	maxTags     = 3
 )
 
 // ---- submitting a post ----
-
-type tagChoice struct {
-	ID      int
-	Name    string
-	Checked bool
-}
 
 type submitPage struct {
 	basePage
 	Title     string
 	URL       string
 	Body      string
-	Tags      []tagChoice
+	Tags      tagFields
 	Errors    []string
 	FormToken string
 }
 
 // renderSubmit shows the submit form, keeping whatever was typed so a
 // mistake doesn't cost someone their post.
-func (s *Server) renderSubmit(w http.ResponseWriter, r *http.Request, start time.Time, form submitPage, checked map[int]bool) {
-	tags, err := s.store.Tags(r.Context())
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	for _, t := range tags {
-		form.Tags = append(form.Tags, tagChoice{ID: t.ID, Name: t.Name, Checked: checked[t.ID]})
-	}
+func (s *Server) renderSubmit(w http.ResponseWriter, r *http.Request, start time.Time, form submitPage, sel tags.Selection) {
+	form.Tags = s.tagFieldsFor(sel)
 	form.basePage = newBasePage(r, "new post").withUp("/", "front page")
 	form.FormToken = s.formToken(formSubmit)
 	form.Generated = time.Since(start)
@@ -62,7 +49,7 @@ func (s *Server) handleSubmitPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	s.renderSubmit(w, r, time.Now(), submitPage{}, nil)
+	s.renderSubmit(w, r, time.Now(), submitPage{}, tags.Selection{})
 }
 
 // POST /submit
@@ -95,21 +82,15 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tags, err := s.store.Tags(ctx)
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	checked, tagIDs, tagProblem := pickTags(r.PostForm["tag"], tags)
+	sel := selectionFrom(r)
+	tagIDs, tagProblems := s.tree().Choose(sel)
 
 	var errs []string
 	if formProblem != "" {
 		errs = append(errs, formProblem)
 	}
 	errs = append(errs, validatePost(form.Title, form.URL, form.Body)...)
-	if tagProblem != "" {
-		errs = append(errs, tagProblem)
-	}
+	errs = append(errs, tagProblems...)
 
 	// Per-account limit, checked last so mistakes above don't use it up.
 	// (The per-IP limit on this route is applied in server.go.)
@@ -121,7 +102,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 
 	if len(errs) > 0 {
 		form.Errors = errs
-		s.renderSubmit(w, r, start, form, checked)
+		s.renderSubmit(w, r, start, form, sel)
 		return
 	}
 
@@ -138,6 +119,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.stats.posts.Add(1) // show the new count right away, not at the next refresh
+	go s.refreshStats()  // and the tag counts soon, without making the poster wait
 
 	// Post/Redirect/Get: go and look at the new post.
 	http.Redirect(w, r, "/p/"+publicID, http.StatusSeeOther)
@@ -186,40 +168,13 @@ func normalizeURL(link string) string {
 	return u.String()
 }
 
-// pickTags turns the ticked checkboxes into tag IDs, allowing only real
-// tags, each once, 1 to 3 of them. checked remembers the ticks for re-display.
-func pickTags(values []string, all []store.Tag) (checked map[int]bool, ids []int, problem string) {
-	valid := make(map[int]bool, len(all))
-	for _, t := range all {
-		valid[t.ID] = true
-	}
-
-	checked = make(map[int]bool)
-	for _, v := range values {
-		id, err := strconv.Atoi(v)
-		if err != nil || !valid[id] || checked[id] {
-			continue // ignore anything that isn't a real, new tag
-		}
-		checked[id] = true
-		ids = append(ids, id)
-	}
-
-	switch {
-	case len(ids) == 0:
-		problem = "Pick at least one tag."
-	case len(ids) > maxTags:
-		problem = "Pick at most " + strconv.Itoa(maxTags) + " tags."
-	}
-	return checked, ids, problem
-}
-
 // ---- viewing a post ----
 
 // postView is a post prepared for display.
 type postView struct {
 	PublicID      string
 	Title         string
-	Href          string // where the title points: the link, or the post itself
+	Href          string // where the title points in lists: always the post itself
 	Link          string // the external URL, for link posts
 	Domain        string
 	BodyHTML      template.HTML
@@ -229,7 +184,7 @@ type postView struct {
 	Posted        time.Time
 	Edited        bool
 	Score         int
-	Tags          []string
+	Tags          []tags.Chip
 	Deleted       bool
 	Removed       bool
 	Comments      int
@@ -240,7 +195,7 @@ type postView struct {
 	EditLeft      string // "7 minutes", for the edit link
 }
 
-func toPostView(p store.Post) postView {
+func toPostView(p store.Post, tree *tags.Tree) postView {
 	v := postView{
 		PublicID:      p.PublicID,
 		Title:         p.Title,
@@ -250,15 +205,12 @@ func toPostView(p store.Post) postView {
 		Posted:        p.CreatedAt,
 		Edited:        p.EditedAt != nil,
 		Score:         p.Score,
-		Tags:          p.Tags,
+		Tags:          tree.Chips(p.Tags),
 		Deleted:       p.Deleted,
 		Removed:       p.Removed,
 		Comments:      p.CommentCount,
 		LastActivity:  p.LastActivityAt,
 		Href:          "/p/" + p.PublicID,
-	}
-	if p.URL != "" {
-		v.Href = p.URL
 	}
 	if p.Body != "" {
 		v.BodyHTML = markdown.Render(p.Body)
@@ -333,7 +285,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	view := toPostView(p)
+	view := toPostView(p, s.tree())
 	myPostVote, err := s.myVotes(r, opts.viewer, store.VotePost, []int64{p.ID})
 	if err != nil {
 		serverError(w, err)

@@ -4,7 +4,26 @@
 
   <div class="layout">
     <main>
+      {{with .Tag}}
+      <header class="tag-header">
+        {{if .Path}}<p class="tag-path">{{range .Path}}<a href="/t/{{.Slug}}">{{.Display}}</a> › {{end}}</p>{{end}}
+        <h1 class="section-title list-title">{{$.Heading}} <span>{{$.Description}}</span></h1>
+        {{if .Description}}<p class="tag-description">{{.Description}}</p>{{end}}
+        {{if .AlsoUnder}}<p class="tag-also">Also under {{range $i, $p := .AlsoUnder}}{{if $i}}, {{end}}<a href="/t/{{$p.Slug}}">{{$p.Display}}</a>{{end}}</p>{{end}}
+        {{if .Children}}
+        <ul class="subtags">
+          {{range .Children}}<li><a class="tag" href="/t/{{.Slug}}">{{.Display}}</a> <span>{{.Count | commas}}</span></li>
+          {{end}}
+        </ul>
+        <p class="tag-scope">
+          {{if .Only}}<a href="{{.AllURL}}">include everything below</a> | <strong>this tag only</strong>
+          {{else}}<strong>including everything below</strong> | <a href="{{.OnlyURL}}">this tag only</a>{{end}}
+        </p>
+        {{end}}
+      </header>
+      {{else}}
       <h1 class="section-title list-title">{{.Heading}} <span>{{.Description}}</span></h1>
+      {{end}}
 
       {{if .Posts}}
       <ol class="posts unranked">

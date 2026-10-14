@@ -19,7 +19,7 @@ func TestCreatePost(t *testing.T) {
 
 	pid, err := st.CreatePost(ctx, NewPost{
 		AuthorID: me, Title: "A link", URL: "https://example.org/x", Body: "**hi**",
-		TagIDs: []int{mustTag(t, st, "tech"), mustTag(t, st, "ask")},
+		TagIDs: []int{mustTag(t, st, "technology"), mustTag(t, st, "question")},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -32,8 +32,8 @@ func TestCreatePost(t *testing.T) {
 	if p.Title != "A link" || p.URL != "https://example.org/x" || p.Body != "**hi**" || p.Author != "blue-humming-otter" {
 		t.Errorf("loaded post doesn't match what was saved: %+v", p)
 	}
-	if !slices.Equal(p.Tags, []string{"ask", "tech"}) {
-		t.Errorf("tags = %v, want [ask tech] (alphabetical)", p.Tags)
+	if !slices.Equal(p.Tags, []string{"question", "technology"}) {
+		t.Errorf("tags = %v, want [question technology] (alphabetical)", p.Tags)
 	}
 
 	// A text post stores no link at all (NULL), not an empty string.
@@ -81,15 +81,16 @@ func TestListsHideRemovedAndDeletedPosts(t *testing.T) {
 	if n, _ := st.CountPosts(ctx); n != 1 {
 		t.Errorf("CountPosts = %d, want 1", n)
 	}
-	counts, _ := st.TagCounts(ctx)
-	for _, tc := range counts {
-		if tc.Name == "tech" && tc.Count != 1 {
-			t.Errorf("tech tag count = %d, want 1", tc.Count)
-		}
+	counts, err := st.TagPostCounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := counts[mustTag(t, st, "technology")]; n != 1 {
+		t.Errorf("technology count = %d, want 1 (removed and deleted posts don't count)", n)
 	}
 
 	// Tag pages filter by tag.
-	if posts, _, _ := st.ListPosts(ctx, ListOptions{Sort: SortNew, Tag: "books", Limit: 30}); len(posts) != 0 {
+	if posts, _, _ := st.ListPosts(ctx, ListOptions{Sort: SortNew, TagID: mustTag(t, st, "books"), Limit: 30}); len(posts) != 0 {
 		t.Errorf("no post is tagged books, but the tag list returned %d", len(posts))
 	}
 }

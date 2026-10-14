@@ -62,9 +62,10 @@ func (s *Server) postViews(r *http.Request, posts []store.Post, showLastActivity
 		return nil, err
 	}
 
+	tree := s.tree()
 	out := make([]postView, 0, len(posts))
 	for _, p := range posts {
-		v := toPostView(p)
+		v := toPostView(p, tree)
 		// "last reply" only means something once a post has comments.
 		v.ShowLastReply = showLastActivity && p.CommentCount > 0
 		v.Vote = viewer.widget("post", p.PublicID, p.Score, mine[p.ID],
@@ -82,7 +83,7 @@ type homePage struct {
 	Popular    []postView
 	Active     []postView
 	MoreActive bool // there are more active posts than fit on the front page
-	Tags       []store.TagCount
+	Tags       []tagLink
 }
 
 // GET /
@@ -96,11 +97,6 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	active, next, err := s.store.ListPosts(ctx, store.ListOptions{Sort: store.SortActive, Limit: 20})
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	tags, err := s.store.TagCounts(ctx)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -122,7 +118,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		Popular:    popularViews,
 		Active:     activeViews,
 		MoreActive: next != nil,
-		Tags:       tags,
+		Tags:       s.sidebarTags(),
 	}
 	data.Generated = time.Since(start)
 	s.render(w, "home.html", data)
@@ -137,9 +133,10 @@ type listPage struct {
 	Description string
 	Posts       []postView
 	EmptyText   string
-	NextURL     string // "older posts", if there are more
-	FirstURL    string // "back to the start", when not on the first page
-	Tags        []store.TagCount
+	NextURL     string     // "older posts", if there are more
+	FirstURL    string     // "back to the start", when not on the first page
+	Tag         *tagHeader // set on tag pages
+	Tags        []tagLink  // the sidebar
 }
 
 // listSpec describes one kind of list page.
@@ -163,36 +160,17 @@ var (
 // handleList returns a handler for a sorted list of all posts.
 func (s *Server) handleList(spec listSpec, path string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s.renderList(w, r, spec, path, "")
+		s.renderList(w, r, spec, path, store.ListOptions{}, nil)
 	}
 }
 
-// GET /t/{tag}: newest posts with one tag.
-func (s *Server) handleTag(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("tag")
-	ok, err := s.store.TagExists(r.Context(), name)
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	spec := listSpec{
-		sort:        store.SortNew,
-		heading:     "Tagged " + name,
-		description: "newest first",
-		emptyText:   "No posts with this tag yet.",
-	}
-	s.renderList(w, r, spec, "/t/"+name, name)
-}
-
-func (s *Server) renderList(w http.ResponseWriter, r *http.Request, spec listSpec, path, tag string) {
+// renderList shows one page of a list. path is the list's own address
+// (with any query it needs, like ?only=1); opt carries any tag filter.
+func (s *Server) renderList(w http.ResponseWriter, r *http.Request, spec listSpec, path string, opt store.ListOptions, tag *tagHeader) {
 	start := time.Now()
 	ctx := r.Context()
 
-	opt := store.ListOptions{Sort: spec.sort, Tag: tag, Limit: 30}
+	opt.Sort, opt.Limit = spec.sort, 30
 	if raw := r.URL.Query().Get("after"); raw != "" {
 		c, err := store.ParseCursor(raw)
 		if err != nil {
@@ -204,11 +182,6 @@ func (s *Server) renderList(w http.ResponseWriter, r *http.Request, spec listSpe
 	}
 
 	posts, next, err := s.store.ListPosts(ctx, opt)
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	tags, err := s.store.TagCounts(ctx)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -226,10 +199,16 @@ func (s *Server) renderList(w http.ResponseWriter, r *http.Request, spec listSpe
 		Description: spec.description,
 		Posts:       postViews,
 		EmptyText:   spec.emptyText,
-		Tags:        tags,
+		Tag:         tag,
+		Tags:        s.sidebarTags(),
 	}
-	if tag != "" {
-		data.basePage = data.basePage.withUp("/tags", "all tags")
+	if tag != nil {
+		// Up goes to the parent tag, or to the index for a top-level one.
+		if n := len(tag.Path); n > 0 {
+			data.basePage = data.basePage.withUp("/t/"+tag.Path[n-1].Slug, tag.Path[n-1].Display)
+		} else {
+			data.basePage = data.basePage.withUp("/tags", "all tags")
+		}
 	}
 	if opt.After != nil {
 		data.FirstURL = path
@@ -238,28 +217,8 @@ func (s *Server) renderList(w http.ResponseWriter, r *http.Request, spec listSpe
 		}
 	}
 	if next != nil {
-		data.NextURL = path + "?after=" + next.String()
+		data.NextURL = withQuery(path, "after", next.String())
 	}
 	data.Generated = time.Since(start)
 	s.render(w, "list.html", data)
-}
-
-// ---- all tags ----
-
-type tagsPage struct {
-	basePage
-	Tags []store.TagCount
-}
-
-// GET /tags
-func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	tags, err := s.store.TagCounts(r.Context())
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	data := tagsPage{basePage: newBasePage(r, "tags").withUp("/", "front page"), Tags: tags}
-	data.Generated = time.Since(start)
-	s.render(w, "tags.html", data)
 }

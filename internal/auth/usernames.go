@@ -56,15 +56,23 @@ const maxNameAttempts = 100
 
 var ErrNamesExhausted = errors.New("could not find an unused name; add more words to the lists")
 
+// RandomName builds one name, using pick to choose a position in each word
+// list (pick(n) returns a number from 0 to n-1). Sign-up passes math/rand's
+// IntN; the seed program passes its own seeded generator, so it can build
+// the same names every run.
+func RandomName(pick func(n int) int) string {
+	return fmt.Sprintf("%s-%s-%s",
+		nameColors[pick(len(nameColors))],
+		nameVerbs[pick(len(nameVerbs))],
+		nameAnimals[pick(len(nameAnimals))],
+	)
+}
+
 // GenerateUsername picks random names until taken reports one is free.
 // taken can fail (it usually asks the database), and that error is passed along.
 func GenerateUsername(taken func(string) (bool, error)) (string, error) {
 	for range maxNameAttempts {
-		name := fmt.Sprintf("%s-%s-%s",
-			nameColors[mrand.IntN(len(nameColors))],
-			nameVerbs[mrand.IntN(len(nameVerbs))],
-			nameAnimals[mrand.IntN(len(nameAnimals))],
-		)
+		name := RandomName(mrand.IntN)
 		used, err := taken(name)
 		if err != nil {
 			return "", err

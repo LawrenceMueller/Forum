@@ -59,7 +59,7 @@ func (s *Store) EditPost(ctx context.Context, publicID string, authorID int64, t
 		  AND removed_at IS NULL AND deleted_at IS NULL
 		  AND created_at > now() - $6 * interval '1 second'
 		RETURNING id`,
-		body, contentHash(title, url, body), graceSecs, publicID, authorID, windowSecs,
+		body, ContentHash(title, url, body), graceSecs, publicID, authorID, windowSecs,
 	).Scan(&postID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrEditClosed
@@ -94,7 +94,7 @@ func (s *Store) EditComment(ctx context.Context, publicID string, authorID int64
 		  AND author_id = $5
 		  AND removed_at IS NULL AND deleted_at IS NULL
 		  AND created_at > now() - $6 * interval '1 second'`,
-		body, contentHash("", "", body), graceSecs, publicID, authorID, windowSecs,
+		body, ContentHash("", "", body), graceSecs, publicID, authorID, windowSecs,
 	)
 	if err != nil {
 		return Comment{}, err

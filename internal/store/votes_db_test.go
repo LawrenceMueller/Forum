@@ -215,7 +215,7 @@ func TestDeletePostErasesButKeepsThread(t *testing.T) {
 	me := mustUser(t, st, "blue-humming-otter")
 	other := mustUser(t, st, "red-baking-hare")
 	pid, err := st.CreatePost(ctx, NewPost{AuthorID: me, Title: "Keep me", URL: "https://example.org", Body: "secret",
-		TagIDs: []int{mustTag(t, st, "tech")}})
+		TagIDs: []int{mustTag(t, st, "technology")}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,7 +22,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -171,12 +170,8 @@ func admin(t *testing.T, u *testUser) *testUser {
 
 func (s *site) post(t *testing.T, author *testUser, title string) store.Post {
 	t.Helper()
-	tags, err := testStore.Tags(ctx)
-	if err != nil || len(tags) == 0 {
-		t.Fatalf("no tags: %v", err)
-	}
 	pid, err := testStore.CreatePost(ctx, store.NewPost{
-		AuthorID: author.id, Title: title, Body: "Body of " + title, TagIDs: []int{tags[0].ID},
+		AuthorID: author.id, Title: title, Body: "Body of " + title, TagIDs: []int{tagID(t, "technology")},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -186,6 +181,22 @@ func (s *site) post(t *testing.T, author *testUser, title string) store.Post {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// tagID finds a tag by its slug.
+func tagID(t *testing.T, slug string) int {
+	t.Helper()
+	all, err := testStore.Tags(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tag := range all {
+		if tag.Name == slug {
+			return tag.ID
+		}
+	}
+	t.Fatalf("no tag %q", slug)
+	return 0
 }
 
 func (s *site) comment(t *testing.T, p store.Post, author *testUser, body string) string {
@@ -297,5 +308,3 @@ func sessionCookieFrom(rec *httptest.ResponseRecorder) *http.Cookie {
 	}
 	return nil
 }
-
-func itoa(n int) string { return strconv.Itoa(n) }

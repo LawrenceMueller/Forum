@@ -33,3 +33,43 @@ document.querySelectorAll(".reveal-group").forEach(function (group) {
   });
   update();
 });
+
+// ---- topic suggestions ----
+// The suggestions themselves are plain htmx (see partials/tagpicker.html);
+// this only smooths the keyboard side.
+
+// After a suggestion is clicked, the server sends back the topics box with
+// "autofocus" on it. Put the cursor at the end, ready for the next topic,
+// rather than wherever the browser chooses.
+document.body.addEventListener("htmx:afterSettle", function () {
+  const input = document.querySelector("#topics[autofocus]");
+  if (!input) return;
+  input.removeAttribute("autofocus");
+  input.focus();
+  const end = input.value.length;
+  input.setSelectionRange(end, end);
+});
+
+// Down arrow from the box goes to the first suggestion; up and down move
+// between them; Escape goes back to the box. (Tab works too, as always.)
+document.addEventListener("keydown", function (e) {
+  const input = document.getElementById("topics");
+  if (!input) return;
+  const buttons = Array.from(document.querySelectorAll("#topic-help .suggestion"));
+  const at = buttons.indexOf(document.activeElement);
+
+  if (e.target === input && e.key === "ArrowDown" && buttons.length > 0) {
+    e.preventDefault();
+    buttons[0].focus();
+  } else if (at >= 0 && e.key === "ArrowDown") {
+    e.preventDefault();
+    buttons[Math.min(at + 1, buttons.length - 1)].focus();
+  } else if (at >= 0 && e.key === "ArrowUp") {
+    e.preventDefault();
+    if (at === 0) input.focus();
+    else buttons[at - 1].focus();
+  } else if (at >= 0 && e.key === "Escape") {
+    e.preventDefault();
+    input.focus();
+  }
+});

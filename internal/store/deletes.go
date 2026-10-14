@@ -198,3 +198,85 @@ func (s *Store) MyComments(ctx context.Context, authorID int64, after *Cursor, l
 	}
 	return comments, next, nil
 }
+
+// VotedItem is a post or comment the viewer voted on, for the "upvoted" and
+// "downvoted" views of their history page.
+type VotedItem struct {
+	Kind         string // "post" or "comment"
+	PublicID     string
+	Title        string // the post's title (for a comment, the post it's on)
+	Body         string // a comment's text ("" for posts)
+	CreatedAt    time.Time
+	Score        int
+	CommentCount int    // posts only
+	PostID       string // comments only: the post's public ID
+	Closed       bool   // deleted, or on a deleted post: voting is closed
+	PostDeleted  bool   // the post was deleted by its author (title kept)
+	key          int64  // orders posts and comments together; see MyVotedItems
+}
+
+// MyVotedItems lists the posts and comments a voter voted on with value (1
+// for upvotes, -1 for downvotes), together, newest first by when the post or
+// comment was WRITTEN. Votes have no timestamps (when someone votes reveals
+// when they're online), so "when you voted" can't be shown.
+//
+// Left out: anything the admin removed (or on a removed post), and deleted
+// comments, which have nothing left to show. Deleted posts stay, since their
+// titles do.
+//
+// Posts and comments are paged as one list. Their IDs come from different
+// tables and can repeat, so each row gets a key unique across both:
+// id*2+1 for posts, id*2 for comments. The cursor is (created_at, key).
+func (s *Store) MyVotedItems(ctx context.Context, voter string, value int, after *Cursor, limit int) ([]VotedItem, *Cursor, error) {
+	args := []any{voter, value, limit + 1}
+	cond := ""
+	if after != nil {
+		cond = "WHERE (created_at, key) < ($4, $5)"
+		args = append(args, time.UnixMicro(after.Value), after.ID)
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT kind, public_id, title, body, created_at, score, comment_count,
+		       post_id, closed, post_deleted, key
+		FROM (
+			SELECT 'post' AS kind, p.public_id, p.title, '' AS body, p.created_at,
+			       p.score, p.comment_count, '' AS post_id,
+			       p.deleted_at IS NOT NULL AS closed,
+			       p.deleted_at IS NOT NULL AS post_deleted,
+			       p.id * 2 + 1 AS key
+			FROM post_votes v
+			JOIN posts p ON p.id = v.post_id
+			WHERE v.voter = $1 AND v.value = $2 AND p.removed_at IS NULL
+			UNION ALL
+			SELECT 'comment', c.public_id, p.title, c.body, c.created_at,
+			       c.upvotes - c.downvotes, 0, p.public_id,
+			       p.deleted_at IS NOT NULL,
+			       p.deleted_at IS NOT NULL,
+			       c.id * 2
+			FROM comment_votes v
+			JOIN comments c ON c.id = v.comment_id
+			JOIN posts p ON p.id = c.post_id
+			WHERE v.voter = $1 AND v.value = $2
+			  AND c.removed_at IS NULL AND c.deleted_at IS NULL AND p.removed_at IS NULL
+		) voted `+cond+`
+		ORDER BY created_at DESC, key DESC
+		LIMIT $3`, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	items, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (VotedItem, error) {
+		var it VotedItem
+		err := row.Scan(&it.Kind, &it.PublicID, &it.Title, &it.Body, &it.CreatedAt, &it.Score,
+			&it.CommentCount, &it.PostID, &it.Closed, &it.PostDeleted, &it.key)
+		return it, err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	var next *Cursor
+	if len(items) > limit {
+		items = items[:limit]
+		last := items[limit-1]
+		next = historyCursor(last.CreatedAt, last.key)
+	}
+	return items, next, nil
+}

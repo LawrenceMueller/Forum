@@ -14,26 +14,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Tag is one entry in the curated tag list.
-type Tag struct {
-	ID   int
-	Name string
-}
-
-// Tags returns the full tag list, alphabetically.
-func (s *Store) Tags(ctx context.Context) ([]Tag, error) {
-	rows, err := s.db.Query(ctx, `SELECT id, name FROM tags ORDER BY name`)
-	if err != nil {
-		return nil, err
-	}
-	// CollectRows reads every row into a slice and closes rows for us.
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Tag, error) {
-		var t Tag
-		err := row.Scan(&t.ID, &t.Name)
-		return t, err
-	})
-}
-
 // NewPost is what the submit form hands over. Validation (lengths, URL
 // format, 1-3 tags) happens before this; the database double-checks lengths.
 type NewPost struct {
@@ -75,9 +55,11 @@ func newPublicID() (string, error) {
 	return strings.ToLower(idEncoding.EncodeToString(b)), nil
 }
 
-// contentHash fingerprints a post's content for duplicate detection later:
+// ContentHash fingerprints a post's content for duplicate detection later:
 // the same text posted again, by anyone, is almost always spam.
-func contentHash(title, url, body string) string {
+// (Comments use it with an empty title and URL.) Exported because the seed
+// program writes rows directly and must hash content exactly the same way.
+func ContentHash(title, url, body string) string {
 	norm := strings.ToLower(strings.TrimSpace(title)) + "\x00" +
 		strings.TrimSpace(url) + "\x00" +
 		strings.ToLower(strings.Join(strings.Fields(body), " "))
@@ -93,7 +75,7 @@ func (s *Store) CreatePost(ctx context.Context, p NewPost) (string, error) {
 	if p.URL != "" {
 		url = &p.URL
 	}
-	hash := contentHash(p.Title, p.URL, p.Body)
+	hash := ContentHash(p.Title, p.URL, p.Body)
 
 	for range 5 {
 		publicID, err := newPublicID()

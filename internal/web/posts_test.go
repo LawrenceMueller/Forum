@@ -3,8 +3,6 @@ package web
 import (
 	"strings"
 	"testing"
-
-	"snowball/internal/store"
 )
 
 func TestValidLink(t *testing.T) {
@@ -40,34 +38,5 @@ func TestValidatePost(t *testing.T) {
 	}
 	if errs := validatePost("ok", "", strings.Repeat("x", maxBodyLen+1)); len(errs) == 0 {
 		t.Error("an over-long body should fail")
-	}
-}
-
-func TestPickTags(t *testing.T) {
-	all := []store.Tag{{ID: 1, Name: "art"}, {ID: 2, Name: "ask"}, {ID: 3, Name: "books"}, {ID: 4, Name: "diy"}}
-
-	cases := []struct {
-		name        string
-		values      []string
-		wantIDs     int
-		wantProblem bool
-	}{
-		{"one tag", []string{"1"}, 1, false},
-		{"three tags", []string{"1", "2", "3"}, 3, false},
-		{"none", nil, 0, true},
-		{"too many", []string{"1", "2", "3", "4"}, 4, true},
-		{"duplicates count once", []string{"2", "2", "2"}, 1, false},
-		{"unknown and junk ignored", []string{"99", "abc", "1"}, 1, false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			_, ids, problem := pickTags(c.values, all)
-			if len(ids) != c.wantIDs {
-				t.Errorf("got %d tags, want %d", len(ids), c.wantIDs)
-			}
-			if (problem != "") != c.wantProblem {
-				t.Errorf("problem = %q, wanted a problem: %v", problem, c.wantProblem)
-			}
-		})
 	}
 }

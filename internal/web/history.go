@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -11,14 +12,16 @@ import (
 
 const historyPageSize = 25
 
-// historyPage is the private list of everything the viewer has written.
-// Nobody else can see it: there's no public profile, so piecing together
-// someone's history means hunting thread by thread.
+// historyPage is the private list of everything the viewer has written,
+// and everything they've voted on. Nobody else can see it: there's no public
+// profile, so piecing together someone's history means hunting thread by
+// thread.
 type historyPage struct {
 	basePage
-	Show        string // "posts" or "comments"
+	Show        string // "posts", "comments", "upvoted", or "downvoted"
 	Posts       []store.HistoryPost
 	Comments    []historyComment
+	Voted       []votedItem
 	NextURL     string
 	FirstURL    string
 	DeleteToken string
@@ -29,6 +32,17 @@ type historyComment struct {
 	store.HistoryComment
 	Snippet string
 }
+
+// votedItem is a post or comment the viewer voted on, with its arrows, so
+// a vote can be changed or taken back right there.
+type votedItem struct {
+	store.VotedItem
+	Snippet string
+	Votes   voteWidget
+}
+
+// historyViews are the choices in the row at the top of the page.
+var historyViews = []string{"posts", "comments", "upvoted", "downvoted"}
 
 // snippet is the start of a comment's Markdown, as plain one-line text.
 // The template escapes it, so any markup shows as harmless characters.
@@ -51,9 +65,9 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	ctx := r.Context()
 
-	show := "posts"
-	if r.URL.Query().Get("show") == "comments" {
-		show = "comments"
+	show := r.URL.Query().Get("show")
+	if !slices.Contains(historyViews, show) {
+		show = "posts"
 	}
 	path := "/account/history?show=" + show
 
@@ -76,13 +90,31 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 
 	var next *store.Cursor
 	var err error
-	if show == "posts" {
+	switch show {
+	case "posts":
 		data.Posts, next, err = s.store.MyPosts(ctx, u.ID, after, historyPageSize)
-	} else {
+	case "comments":
 		var comments []store.HistoryComment
 		comments, next, err = s.store.MyComments(ctx, u.ID, after, historyPageSize)
 		for _, c := range comments {
 			data.Comments = append(data.Comments, historyComment{c, snippet(c.Body, 160)})
+		}
+	default: // "upvoted" or "downvoted"
+		value := 1
+		if show == "downvoted" {
+			value = -1
+		}
+		v := s.voteViewerFor(r)
+		var items []store.VotedItem
+		items, next, err = s.store.MyVotedItems(ctx, v.voter, value, after, historyPageSize)
+		for _, it := range items {
+			// Only someone else's work can be in these lists (nobody can
+			// vote on their own), so the author doesn't matter here.
+			data.Voted = append(data.Voted, votedItem{
+				VotedItem: it,
+				Snippet:   snippet(it.Body, 160),
+				Votes:     v.widget(it.Kind, it.PublicID, it.Score, value, "", false, it.Closed, true),
+			})
 		}
 	}
 	if err != nil {

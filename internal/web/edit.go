@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"snowball/internal/store"
+	"snowball/internal/tags"
 )
 
 // editTimeLeft says whether something posted at created can still be edited
@@ -54,30 +55,23 @@ type editPostPage struct {
 	PostTitle string
 	Link      string
 	Body      string
-	Tags      []tagChoice
+	Tags      tagFields
 	TimeLeft  string
 	Closed    bool
 	Errors    []string
 	FormToken string
 }
 
-func (s *Server) renderEditPost(w http.ResponseWriter, r *http.Request, start time.Time, post store.Post, body string, checked map[int]bool, errs []string) {
-	tags, err := s.store.Tags(r.Context())
-	if err != nil {
-		serverError(w, err)
-		return
-	}
+func (s *Server) renderEditPost(w http.ResponseWriter, r *http.Request, start time.Time, post store.Post, body string, sel tags.Selection, errs []string) {
 	data := editPostPage{
 		basePage:  newBasePage(r, "edit post").withUp("/p/"+post.PublicID, "back to the post"),
 		PostID:    post.PublicID,
 		PostTitle: post.Title,
 		Link:      post.URL,
 		Body:      body,
+		Tags:      s.tagFieldsFor(sel),
 		Errors:    errs,
 		FormToken: s.formToken(formEditPost),
-	}
-	for _, t := range tags {
-		data.Tags = append(data.Tags, tagChoice{ID: t.ID, Name: t.Name, Checked: checked[t.ID]})
 	}
 	if left, ok := editTimeLeft(post.CreatedAt, time.Now()); ok && !post.Removed && !post.Deleted {
 		data.TimeLeft = friendlyDuration(left)
@@ -114,23 +108,8 @@ func (s *Server) handleEditPostPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// Tick the post's current tags.
-	all, err := s.store.Tags(r.Context())
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	current := make(map[string]bool, len(post.Tags))
-	for _, name := range post.Tags {
-		current[name] = true
-	}
-	checked := make(map[int]bool)
-	for _, t := range all {
-		if current[t.Name] {
-			checked[t.ID] = true
-		}
-	}
-	s.renderEditPost(w, r, start, post, post.Body, checked, nil)
+	// Fill in the post's current tags.
+	s.renderEditPost(w, r, start, post, post.Body, s.tree().SelectionFor(post.Tags), nil)
 }
 
 // POST /p/{id}/edit
@@ -152,12 +131,8 @@ func (s *Server) handleEditPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := strings.ReplaceAll(r.PostForm.Get("body"), "\r\n", "\n")
-	tags, err := s.store.Tags(r.Context())
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	checked, tagIDs, tagProblem := pickTags(r.PostForm["tag"], tags)
+	sel := selectionFrom(r)
+	tagIDs, tagProblems := s.tree().Choose(sel)
 
 	var errs []string
 	if formProblem != "" {
@@ -165,22 +140,20 @@ func (s *Server) handleEditPost(w http.ResponseWriter, r *http.Request) {
 	}
 	// Title and link are the post's own, unchanged, so only the body can fail here.
 	errs = append(errs, validatePost(post.Title, post.URL, body)...)
-	if tagProblem != "" {
-		errs = append(errs, tagProblem)
-	}
+	errs = append(errs, tagProblems...)
 	if len(errs) == 0 {
 		if msg := s.editingAllowed(u.ID); msg != "" {
 			errs = append(errs, msg)
 		}
 	}
 	if len(errs) > 0 {
-		s.renderEditPost(w, r, start, post, body, checked, errs)
+		s.renderEditPost(w, r, start, post, body, sel, errs)
 		return
 	}
 
-	err = s.store.EditPost(r.Context(), post.PublicID, u.ID, post.Title, post.URL, body, tagIDs)
+	err := s.store.EditPost(r.Context(), post.PublicID, u.ID, post.Title, post.URL, body, tagIDs)
 	if errors.Is(err, store.ErrEditClosed) {
-		s.renderEditPost(w, r, start, post, body, checked, []string{closedMessage})
+		s.renderEditPost(w, r, start, post, body, sel, []string{closedMessage})
 		return
 	}
 	if err != nil {

@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"snowball/internal/store"
 )
 
 // ---- logging in and out ----
@@ -151,7 +153,7 @@ func TestNobodyEditsOrDeletesSomeoneElsesWork(t *testing.T) {
 	expectStatus(t, "edit page, someone else's comment", s.get(c+"/edit", other), http.StatusNotFound)
 
 	expectStatus(t, "edit someone else's post", s.send(p+"/edit",
-		form("body", "hijacked", "tag", "1", "form_token", s.token(formEditPost)), other), http.StatusNotFound)
+		form("body", "hijacked", "topics", "technology", "form_token", s.token(formEditPost)), other), http.StatusNotFound)
 	expectStatus(t, "edit someone else's comment", s.send(c+"/edit",
 		form("body", "hijacked", "form_token", s.token(formEditComment)), other), http.StatusNotFound)
 	expectStatus(t, "delete someone else's post", s.send(p+"/delete",
@@ -202,20 +204,52 @@ func TestAdminEndpointsHideFromEveryoneElse(t *testing.T) {
 func TestSubmitAPost(t *testing.T) {
 	s := newSite(t)
 	me := s.user(t, "blue-humming-otter")
-	tags, _ := testStore.Tags(ctx)
-
 	noTag := s.send("/submit", form("title", "Untagged", "body", "hi", "form_token", s.token(formSubmit)), me)
-	expectContains(t, "no tag", noTag, "Pick at least one tag.")
+	expectContains(t, "no tag", noTag, "Add at least one topic.")
+	expectContains(t, "what was typed is kept", noTag, "Untagged")
+
+	unknown := s.send("/submit", form("title", "Odd", "topics", "underwater basket weaving",
+		"form_token", s.token(formSubmit)), me)
+	expectContains(t, "unknown topic", unknown, "There's no topic called “underwater basket weaving”")
+	expectContains(t, "the typed topics are kept", unknown, `value="underwater basket weaving"`)
+
+	ambiguous := s.send("/submit", form("title", "Sport", "topics", "football",
+		"form_token", s.token(formSubmit)), me)
+	expectContains(t, "ambiguous topic", ambiguous, "“football” could mean American football or Soccer.")
 
 	rec := s.send("/submit", form("title", "A brand new post", "body", "**bold** words",
-		"tag", itoa(tags[0].ID), "form_token", s.token(formSubmit)), me)
+		"topics", "Sour Dough", "format", "question", "level", "beginner", "form_token", s.token(formSubmit)), me)
 	expectRedirect(t, "submit", rec, "/p/")
 
 	page := s.get(rec.Header().Get("Location"), nil)
 	expectStatus(t, "the new post", page, http.StatusOK)
 	expectContains(t, "the new post", page, "A brand new post")
+	for _, want := range []string{`href="/t/sourdough">Sourdough</a>`, `tag-format" href="/t/question">Question</a>`, `tag-level" href="/t/beginner">Beginner</a>`} {
+		if !strings.Contains(page.Body.String(), want) {
+			t.Errorf("the new post should show the tag %s", want)
+		}
+	}
 	if !strings.Contains(page.Body.String(), "<strong>bold</strong>") {
 		t.Error("the body's Markdown should be rendered")
+	}
+}
+
+// In lists, a link post's title opens the post page; the domain beside it
+// is what goes to the link.
+func TestLinkPostTitlesOpenThePost(t *testing.T) {
+	s := newSite(t)
+	me := s.user(t, "blue-humming-otter")
+	pid, err := testStore.CreatePost(ctx, store.NewPost{AuthorID: me.id, Title: "A link post",
+		URL: "https://example.com/somewhere", TagIDs: []int{tagID(t, "technology")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := s.get("/new", nil).Body.String()
+	if !strings.Contains(list, `<a class="title" href="/p/`+pid+`">A link post</a>`) {
+		t.Error("the title should open the post page")
+	}
+	if !strings.Contains(list, `<a class="domain" href="https://example.com/somewhere" rel="nofollow ugc noopener">(example.com)</a>`) {
+		t.Error("the domain should link out, with nofollow ugc noopener")
 	}
 }
 

@@ -1,0 +1,11 @@
+{{/* tagchoice.html: a tag name that fits more than one tag (like "football"). */}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Which “{{.Name}}”?</h1>
+  <p class="lede">That name fits more than one tag.</p>
+  <ul class="tag-choices">
+    {{range .Choices}}<li><a class="tag" href="/t/{{.Slug}}">{{.Display}}</a> <span>{{.Description}}</span></li>
+    {{end}}
+  </ul>
+</main>
+{{end}}

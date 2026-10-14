@@ -8,9 +8,11 @@
   <span class="rank"></span>
   {{template "votes" .Vote}}
   <div class="body">
-    <a class="title" href="{{.Href}}"{{if .Link}} rel="nofollow ugc noopener"{{end}}>{{.Title}}</a>
-    {{if .Domain}}<span class="domain">({{.Domain}})</span>{{end}}
-    <span class="tags">{{range .Tags}}<a class="tag" href="/t/{{.}}">{{.}}</a>{{end}}</span>
+    {{/* The title always opens the post; for link posts, the domain beside it
+         goes straight to the link. (The post page's title links out too.) */}}
+    <a class="title" href="{{.Href}}">{{.Title}}</a>
+    {{if .Domain}}<a class="domain" href="{{.Link}}" rel="nofollow ugc noopener">({{.Domain}})</a>{{end}}
+    <span class="tags">{{range .Tags}}<a class="tag{{if ne .Facet "topic"}} tag-{{.Facet}}{{end}}" href="/t/{{.Slug}}">{{.Display}}</a>{{end}}</span>
     <p class="meta">{{.Posted.Format "2006-01-02 15:04"}} by
       {{if .AuthorDeleted}}<span class="author-deleted">[deleted]</span>
       {{else}}<span class="anon {{.ColorClass}}">{{.Author}}</span>{{end}}

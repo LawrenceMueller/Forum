@@ -99,7 +99,7 @@ type NewComment struct {
 // In the same transaction it bumps the post's comment count and activity
 // time, which is what moves the post up the "active" list.
 func (s *Store) CreateComment(ctx context.Context, c NewComment) (publicID string, depth int, err error) {
-	hash := contentHash("", "", c.Body)
+	hash := ContentHash("", "", c.Body)
 
 	for range 5 {
 		publicID, err = newPublicID()

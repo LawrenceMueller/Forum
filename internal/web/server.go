@@ -3,12 +3,15 @@
 package web
 
 import (
+	"context"
 	"html/template"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"snowball/internal/auth"
 	"snowball/internal/store"
+	"snowball/internal/tags"
 )
 
 // Config holds settings that differ between your machine and production.
@@ -35,6 +38,7 @@ type Server struct {
 	limits     rateLimits
 	logins     *loginGuard
 	stats      siteStats
+	tagTree    atomic.Pointer[tags.Tree] // the tag system, in memory (tags.go)
 }
 
 // rateLimits are per visitor (per IP). The numbers are "one token refills
@@ -55,6 +59,7 @@ type rateLimits struct {
 	votingDaily  *limiter // per ACCOUNT: the daily budget
 	votingAuthor *limiter // per ACCOUNT per AUTHOR: votes on one person's content
 	editing      *limiter // saving edits to posts and comments, per ACCOUNT
+	suggest      *limiter // topic suggestions while typing, per IP
 }
 
 func newRateLimits() rateLimits {
@@ -74,6 +79,7 @@ func newRateLimits() rateLimits {
 		votingDaily:  newLimiter("voting-daily", 24*time.Hour/250, 250), // 250 a day, rolling
 		votingAuthor: newLimiter("voting-author", 24*time.Hour/10, 10),  // 10 a day per author
 		editing:      newLimiter("editing", 10*time.Second, 20),         // 20 at once, then one per 10s
+		suggest:      newLimiter("suggest", 250*time.Millisecond, 40),   // brisk typing, not a scraper
 	}
 }
 
@@ -106,6 +112,12 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 		return nil, err
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.loadTags(ctx); err != nil {
+		return nil, err
+	}
+
 	s.refreshStats()
 	go s.statsLoop()
 	return s, nil
@@ -130,6 +142,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /top", s.handleList(listTop, "/top"))
 	mux.HandleFunc("GET /t/{tag}", s.handleTag)
 	mux.HandleFunc("GET /tags", s.handleTags)
+	mux.Handle("GET /tags/suggest", s.limit(s.limits.suggest, noStore(s.handleTopicSuggest)))
+	mux.Handle("GET /tags/pick", s.limit(s.limits.suggest, noStore(s.handleTopicPick)))
 	mux.HandleFunc("GET /robots.txt", robotsTxt)
 
 	// Account pages are never cached (see noStore in headers.go), and the

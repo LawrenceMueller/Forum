@@ -8,16 +8,18 @@ import (
 	"time"
 )
 
-// siteStats are numbers shown on every page (the footer's post count).
-// Counting posts on every page load would be wasteful, so the count is
-// refreshed once a minute in the background and read from memory.
-// atomic.Int64 is safe to read and write from many requests at once.
+// siteStats are numbers shown on every page: the footer's post count and
+// the post count under each tag. Counting on every page load would be
+// wasteful (the tag counts read every tag link), so they're refreshed once
+// a minute in the background and read from memory. The atomic types are
+// safe to read and write from many requests at once.
 type siteStats struct {
-	posts atomic.Int64
+	posts     atomic.Int64
+	tagCounts atomic.Pointer[map[int]int64] // tag ID -> visible posts at or below it
 }
 
 func (s *Server) refreshStats() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	n, err := s.store.CountPosts(ctx)
 	if err != nil {
@@ -25,6 +27,13 @@ func (s *Server) refreshStats() {
 		return
 	}
 	s.stats.posts.Store(n)
+
+	counts, err := s.store.TagPostCounts(ctx)
+	if err != nil {
+		log.Printf("stats: tag counts: %v", err)
+		return
+	}
+	s.stats.tagCounts.Store(&counts)
 }
 
 func (s *Server) statsLoop() {

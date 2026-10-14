@@ -1,6 +1,6 @@
 {{/*
-  history.html: everything the viewer has written. Private: only its owner
-  can ever see it.
+  history.html: everything the viewer has written, and everything they've
+  voted on. Private: only its owner can ever see it.
 
   Each delete control is a <details> element: clicking "delete" opens a
   confirmation with the real button, so one stray click can't delete
@@ -8,13 +8,22 @@
 */}}
 {{define "content"}}
 <main class="narrow history">
-  <h1 class="page-title">Your posts and comments</h1>
+  <h1 class="page-title">Your history</h1>
+  {{if or (eq .Show "upvoted") (eq .Show "downvoted")}}
+  <p class="lede">Only you can see this page. Newest first by when each was written: Snowball
+    never records when you voted.</p>
+  {{else}}
   <p class="lede">Only you can see this page. Deleting something erases its text for good.</p>
+  {{end}}
 
   <nav class="history-tabs" aria-label="Show">
     {{if eq .Show "posts"}}<strong>posts</strong>{{else}}<a href="/account/history?show=posts">posts</a>{{end}}
     |
     {{if eq .Show "comments"}}<strong>comments</strong>{{else}}<a href="/account/history?show=comments">comments</a>{{end}}
+    |
+    {{if eq .Show "upvoted"}}<strong>upvoted</strong>{{else}}<a href="/account/history?show=upvoted">upvoted</a>{{end}}
+    |
+    {{if eq .Show "downvoted"}}<strong>downvoted</strong>{{else}}<a href="/account/history?show=downvoted">downvoted</a>{{end}}
   </nav>
 
   {{if eq .Show "posts"}}
@@ -42,7 +51,7 @@
     {{else}}
     <p class="empty">{{if .FirstURL}}No older posts.{{else}}You haven't posted anything yet.{{end}}</p>
     {{end}}
-  {{else}}
+  {{else if eq .Show "comments"}}
     {{if .Comments}}
     <ul class="history-list">
       {{range .Comments}}
@@ -66,6 +75,29 @@
     </ul>
     {{else}}
     <p class="empty">{{if .FirstURL}}No older comments.{{else}}You haven't commented on anything yet.{{end}}</p>
+    {{end}}
+  {{else}}
+    {{if .Voted}}
+    <ul class="history-list">
+      {{range .Voted}}
+      <li>
+        {{if eq .Kind "post"}}
+        <a class="history-title" href="/p/{{.PublicID}}">{{.Title}}</a>
+        <p class="meta">post | {{.CreatedAt.Format "2006-01-02 15:04"}}
+          | {{.CommentCount}} {{if eq .CommentCount 1}}comment{{else}}comments{{end}}
+          {{if .PostDeleted}}| deleted by its author{{end}}</p>
+        {{else}}
+        <p class="history-snippet">{{.Snippet}}</p>
+        <p class="meta">comment on <a href="/p/{{.PostID}}#c-{{.PublicID}}">{{.Title}}</a>
+          | {{.CreatedAt.Format "2006-01-02 15:04"}}
+          {{if .PostDeleted}}| the post was deleted{{end}}</p>
+        {{end}}
+        {{template "votes" .Votes}}
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="empty">{{if .FirstURL}}Nothing older.{{else}}You haven't {{.Show}} anything yet.{{end}}</p>
     {{end}}
   {{end}}
 

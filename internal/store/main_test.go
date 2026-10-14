@@ -128,12 +128,12 @@ func mustTag(t *testing.T, st *Store, name string) int {
 	return 0
 }
 
-// mustPost creates a text post tagged "tech" and returns the loaded post.
+// mustPost creates a text post tagged "technology" and returns the loaded post.
 func mustPost(t *testing.T, st *Store, author int64, title string) Post {
 	t.Helper()
 	pid, err := st.CreatePost(ctx, NewPost{
 		AuthorID: author, Title: title, Body: "body of " + title,
-		TagIDs: []int{mustTag(t, st, "tech")},
+		TagIDs: []int{mustTag(t, st, "technology")},
 	})
 	if err != nil {
 		t.Fatalf("creating post %q: %v", title, err)

@@ -1,12 +1,80 @@
-{{/* tagpicker.html: the tag checkboxes, shared by the submit and edit pages. Expects []tagChoice. */}}
+{{/*
+  tagpicker.html: the tag fields, shared by the submit and edit pages.
+  Expects tagFields. Topics are typed (matched forgivingly on the server:
+  "sour dough" finds Sourdough); format and level come from fixed lists.
+*/}}
 {{define "tagpicker"}}
 <fieldset class="tag-picker">
-  <legend>Tags <span class="optional">pick 1 to 3</span></legend>
-  {{range .}}
-  <label class="tag-choice">
-    <input type="checkbox" name="tag" value="{{.ID}}"{{if .Checked}} checked{{end}}>
-    <span>{{.Name}}</span>
-  </label>
-  {{end}}
+  <legend>Tags</legend>
+
+  {{template "topicfield" .Topic}}
+
+  <div class="tag-facets">
+    <div class="field">
+      <label for="format">Format <span class="optional">optional</span></label>
+      <select id="format" name="format">
+        <option value="">none</option>
+        {{range .Formats}}<option value="{{.Slug}}"{{if eq .Slug $.Format}} selected{{end}}>{{.Display}}</option>
+        {{end}}
+      </select>
+    </div>
+    <div class="field">
+      <label for="level">Level <span class="optional">optional</span></label>
+      <select id="level" name="level">
+        <option value="">any</option>
+        {{range .Levels}}<option value="{{.Slug}}"{{if eq .Slug $.Level}} selected{{end}}>{{.Display}}</option>
+        {{end}}
+      </select>
+    </div>
+  </div>
 </fieldset>
+{{end}}
+
+{{/*
+  topicfield: the topics box, with the suggestions under it. Expects
+  topicField. Also returned alone by GET /tags/pick, after a suggestion is
+  clicked, with the box filled in and focused again.
+
+  While typing, htmx asks GET /tags/suggest (200ms after the last key) and
+  puts the answer in #topic-help. Without JavaScript none of that happens and
+  the box is a plain text field, matched when the form is sent.
+*/}}
+{{define "topicfield"}}
+<div class="field" id="topic-field">
+  <label for="topics">Topics <span class="optional">1 to 3, separated by commas</span></label>
+  <input id="topics" name="topics" type="text" value="{{.Topics}}" required maxlength="300"
+         autocomplete="off" autocapitalize="none" spellcheck="false"
+         placeholder="e.g. sourdough, home networking" aria-describedby="topic-help topic-hint"
+         hx-get="/tags/suggest" hx-trigger="input changed delay:200ms" hx-sync="this:replace"
+         hx-target="#topic-help" hx-swap="innerHTML"{{if .Focus}} autofocus{{end}}>
+  <div id="topic-help" class="topic-help" aria-live="polite">{{template "topichelp" .Help}}</div>
+  <p class="hint" id="topic-hint">Pick the most specific topic that fits: sourdough already includes Bread, Baking and
+    Food &amp; drink. Not sure what exists? <a href="/tags" target="_blank" rel="noopener">See all tags</a>
+    (opens in a new tab, so you keep what you've written).</p>
+</div>
+{{end}}
+
+{{/*
+  topichelp: what's under the topics box. Expects topicHelp: suggestions for
+  the topic being typed (each a button that puts it in the box), then which
+  topics the box already holds and what they bring along.
+*/}}
+{{define "topichelp"}}
+{{- if .Full}}
+<p class="topic-note">That's three topics, the most a post can have.</p>
+{{- else if .Suggestions}}
+<ul class="topic-suggestions" aria-label="Matching topics">
+  {{range .Suggestions}}<li><button type="button" class="suggestion"
+      hx-get="/tags/pick?choose={{.Slug}}" hx-include="#topics" hx-target="#topic-field" hx-swap="outerHTML"
+      >{{.Display}}{{if .Where}} <span class="where">in {{.Where}}</span>{{end}}</button></li>
+  {{end}}
+</ul>
+{{- else if .NoMatch}}
+<p class="topic-note">No topic matches “{{.Typed}}”. Try a broader word, or
+  <a href="/tags" target="_blank" rel="noopener">see all tags</a>.</p>
+{{- end}}
+{{- if .Chosen}}
+<p class="topic-note topic-chosen">Topics: {{range $i, $t := .Chosen}}{{if $i}}, {{end}}<strong>{{$t}}</strong>{{end}}
+  {{- if .Covers}}. Also shows under {{range $i, $t := .Covers}}{{if $i}}, {{end}}{{$t}}{{end}}{{end}}.</p>
+{{- end}}
 {{end}}

@@ -2,7 +2,7 @@
 
 This document is the single place to understand Snowball: what it is, how it is built, what exists today and where it lives in the code, and what is planned. Someone who has never seen the project should be able to read it top to bottom and start working on tickets.
 
-Last updated: after the testing chapter (database, request-level, smoke, fuzz, concurrency and migration tests; staticcheck and govulncheck; CI; the one-command check script), which followed posting slices five and six and the "up" navigation links. The posting chapter's last slice, images, waits for moderation (section 11.1).
+Last updated: after the topic type-ahead (tags v2 Phase 1 part B, first half: suggestions under the topics box while typing; section 7.10), which followed tags v2 Phase 1 part A (the tag tree in the database, typed topics with formats and levels, tag pages that include everything below, cached counts; section 11.1), the tag system v2 design, the upvoted and downvoted history views, the seed program (`cmd/seed`, a realistic made-up site for browsing and for measuring queries) and the testing chapter (database, request-level, smoke, fuzz, concurrency and migration tests; staticcheck and govulncheck; CI; the one-command check script), which followed posting slices five and six and the "up" navigation links. Next up: the rest of tags v2 Phase 1 part B (the admin tag page), then a performance pass, then moderation; images wait for moderation (section 11.2).
 
 ---
 
@@ -78,6 +78,7 @@ New clone: `cp .env.example .env` (it holds development values only).
 | Database shell (from any folder) | `docker exec -it snowball-db-1 psql -U snowball` |
 | Stop Postgres | `docker compose down` |
 | Wipe the database completely | `docker compose down -v` (destroys all data) |
+| Fill `snowball_dev` with a made-up site | `go run ./cmd/seed` (or `-size large`; see "Seeded data" below) |
 
 Before every commit: `go fmt ./...`, then `.\scripts\check.ps1`, then `git status` to check `.env` is not staged and new migrations are.
 
@@ -103,6 +104,29 @@ Environment variables read by the Go app (not from `.env`; set in the shell or d
 ### Docker notes
 
 `compose.yaml` starts with `name: snowball`, so the Compose project, container (`snowball-db-1`), and volume names stay the same whatever folder the project is in (without it, Compose names everything after the folder, and a renamed folder looks like a different, stopped project). It runs `postgres:18`, binds port `5432` to `127.0.0.1` only, stores data in the named volume `pgdata` mounted at `/var/lib/postgresql` (where Postgres 18 images expect it), and has a `pg_isready` healthcheck.
+
+### Seeded data
+
+`go run ./cmd/seed` builds a made-up but realistic site in its own database, `snowball_dev`, for seeing what a lived-in Snowball looks like and for measuring queries against real volume. It is not a test (nothing is checked about the site's behavior). It empties `snowball_dev` first, so it refuses any database not named `*_dev` or not on this computer; the usual dev database (`snowball`) and the test databases are never touched.
+
+| Size | Contents | Time |
+|---|---|---|
+| `small` (default) | 120 accounts, about 410 posts over 30 days, 4,500 comments, 22,000 votes | about a second |
+| `large` | 20,000 accounts, 100,000 posts over a year, 1.2 million comments, 5.8 million votes (about 2 GB) | a minute or two |
+
+Browse it by pointing the site at it, then switch back:
+
+```powershell
+$env:DATABASE_URL = "postgres://snowball:snowball-dev-only@localhost:5432/snowball_dev?sslmode=disable"
+go run ./cmd/snowball
+Remove-Item Env:DATABASE_URL
+```
+
+Every seeded account's password is `Seeded-Otter-42!`; the program prints the admin's name and a few others worth logging in as. Votes use the real fingerprints (the dev vote secret, or `SNOWBALL_VOTE_SECRET` if set), so a seeded account sees its own votes highlighted.
+
+How it's built (`cmd/seed`): `generate.go` makes up the world with realistic shapes: activity per account follows a power law (a few people post and vote most), post "quality" is lognormal (most posts are ordinary, a few take off), recent posts are still collecting votes and comments, replies cluster around recent comments, and some content is edited, deleted, or removed. `text.go` writes the words from templates and per-tag word lists (nothing real; links only to reserved example domains). `write.go` loads everything with Postgres `COPY` in one transaction, sets the ID sequences past the highest ID, and `main.go` then runs `VACUUM ANALYZE` (so the planner has statistics) and checks every counter matches its rows. Votes are never held in memory: each item's votes come from their own seeded generator, produced once to count and again to write. The same `-seed` builds the same site (times are relative to the run).
+
+Every seeded site also gets fixtures near the top of "new" for checking the layout: a brand-new post, the longest allowed title, an unbroken 100-character word with a very long link, Unicode and emoji, every Markdown feature, a nearly 40,000-character post, a 600-comment (large: 2,500, past the 2,000-comment load cap) megathread, a reply chain 14 levels deep (past the continue-this-thread depth), a controversial post, a deleted post with its discussion, a removed post, and a thread with deleted and removed comments.
 
 ### Manual testing tips
 
@@ -131,15 +155,24 @@ All rate limits live in memory, so restarting the server resets them. When test 
 ```
 snowball/
   cmd/snowball/main.go      Wiring only: config, DB, server, timeouts, shutdown, session cleanup loop.
+  cmd/seed/                 Development tool: fills snowball_dev with a made-up site (section 3, "Seeded data").
+    main.go                 Flags, the *_dev safety check, then build, write, VACUUM ANALYZE, verify.
+    generate.go             The made-up world: accounts, posts, threads, votes, fixtures.
+    text.go                 Titles, bodies, comments from templates and word lists; layout-testing oddities.
+    write.go                COPY into Postgres, sequence fixes, the consistency checks.
   internal/
     auth/                   Pure security logic. No HTTP, no database. Easy to test.
       passwords.go          Password rules, NFKC normalization, argon2id hashing, hashing semaphore, dummy verify.
       recovery.go           Recovery code generation, normalization, hashing.
       tokens.go             Session token generation and hashing.
-      usernames.go          Word lists, username generation, NameSigner (signs offered names).
+      usernames.go          Word lists, username generation (RandomName, GenerateUsername), NameSigner (signs offered names).
       formtokens.go         FormTokens: signed timestamps for anti-bot form checks.
       voters.go             VoterKeys: account ID -> vote fingerprint (HMAC with the vote secret).
     markdown/               Markdown -> sanitized HTML. The only code that returns template.HTML.
+    tags/                   The tag system's rules, no HTTP or database: Normalize, the Tree (ancestors,
+                            paths, lookups), Choose (a post's tags from the form), Chips (how they show).
+    dbsetup/                Development helper: finds the project root (Root), creates a database if
+                            missing and applies every migration (Ensure). Used by testdb and cmd/seed.
     testdb/                 Test-only helper: finds the project root, creates and migrates a named test
                             database (Prepare), lists the tables tests empty. Also holds the migration
                             round-trip test.
@@ -148,8 +181,9 @@ snowball/
       users.go              Users: availability, creation, credentials, password change, soft delete.
       sessions.go           Session create/lookup/delete, delete-all-for-user, expired cleanup.
       recovery.go           Account recovery transaction, remaining code count.
-      posts.go              Tags list, creating posts (random public IDs), loading one post, admin removal.
-      lists.go              Post lists with keyset pagination (new, active, top, hot), tag counts, post count.
+      posts.go              Creating posts (random public IDs), loading one post, admin removal.
+      tags.go               Tag rows (tags, parents, aliases) for building the tree; tag post counts.
+      lists.go              Post lists with keyset pagination (new, active, top, hot), tag filters, post count.
       comments.go           Loading a post's comments, creating comments, admin removal.
       votes.go              Voting (toggle logic, counts), the viewer's votes, vote state, author lookup.
       edits.go              Editing posts and comments (window and grace enforced in SQL).
@@ -163,7 +197,8 @@ snowball/
       loginguard.go         Per-account failed-login slowdown.
       formguard.go          Honeypot + signed timing token checks for every form.
       stats.go              Cached post count for the footer, commas formatting.
-      home.go               Name colors, sort bar data, front page, list pages, tag pages.
+      home.go               Name colors, sort bar data, front page, list pages.
+      tags.go               The tag tree in memory, tag pages, /tags, the sidebar, the forms' tag fields.
       posts.go              Submit page, post validation, post view preparation, post page, admin removal.
       comments.go           Comment trees (build, prune, sort, depth rules), Wilson score, reply forms, thread pages.
       votes.go              Vote arrows (widgets), who may vote, vote limits, the vote handler.
@@ -180,7 +215,7 @@ snowball/
   static/
     css/style.css           The only stylesheet. All CSS goes here.
     js/htmx.min.js          Self-hosted htmx.
-    js/snowball.js          Site behavior (hidden username toggle).
+    js/snowball.js          Site behavior (hidden username toggle, topic type-ahead keys).
   scripts/check.ps1         Every check in one command; CI runs it too (section 10).
   .github/workflows/ci.yml  GitHub Actions: Postgres service, then scripts/check.ps1.
   docs/PROJECT_CONTEXT.md   This document.
@@ -195,7 +230,7 @@ Several files share names across folders (`recovery.go` in both `auth` and `stor
 
 ### Package boundaries
 
-Dependencies flow one way: `cmd/snowball` uses `web` and `store`; `web` uses `store`, `auth`, and `markdown`; `store`, `auth`, and `markdown` depend on nothing internal. `testdb` is imported only by test files (in `store` and `web`), never by the app. Go forbids import cycles, so this direction must be kept.
+Dependencies flow one way: `cmd/snowball` uses `web` and `store`; `web` uses `store`, `auth`, `markdown`, and `tags`; `store`, `auth`, `markdown`, and `tags` depend on nothing internal (the web package turns the store's tag rows into a `tags.Tree`). `testdb` is imported only by test files (in `store` and `web`), and `dbsetup` only by `testdb` and `cmd/seed`; the site itself uses neither. Go forbids import cycles, so this direction must be kept.
 
 `auth` never sees a request or a database. `store` never sees a raw secret: it receives only hashes and fingerprints (password hashes, token hashes, recovery code hashes, vote fingerprints). `web` translates between them and owns everything user-facing.
 
@@ -280,9 +315,32 @@ CREATE TABLE sessions (
 );                                            -- index on user_id
 
 CREATE TABLE tags (
-    id    integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name  text NOT NULL UNIQUE CHECK (name ~ '^[a-z0-9-]{1,24}$')
-);  -- seeded: art, ask, books, diy, food, meta, music, outdoors, show, tech
+    id           integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name         text NOT NULL UNIQUE,  -- the slug: lowercase words joined by hyphens, up to 40
+    display_name text NOT NULL,         -- 1 to 60 characters: "Food & drink"
+    description  text NOT NULL DEFAULT '',   -- up to 200
+    facet        text NOT NULL          -- 'topic', 'format' or 'level'
+);  -- loaded by 00010: 341 topics, 6 formats, 3 levels (section 11.1)
+
+CREATE TABLE tag_parents (     -- a tag's direct parents; several allowed
+    tag_id    integer NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    parent_id integer NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (tag_id, parent_id),
+    CHECK (tag_id <> parent_id)
+);  -- index on parent_id; loops are refused in Go (internal/tags)
+
+CREATE TABLE tag_aliases (     -- other names; matched after normalizing in Go
+    tag_id integer NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    alias  text NOT NULL,      -- 1 to 60 characters, as the admin wrote it
+    PRIMARY KEY (tag_id, alias)
+);
+
+CREATE TABLE tag_closure (     -- every (ancestor, descendant) pair, self at depth 0
+    ancestor_id   integer NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    descendant_id integer NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    depth         integer NOT NULL,
+    PRIMARY KEY (ancestor_id, descendant_id)
+);  -- index on descendant_id; rebuilt from tag_parents whenever the tree changes
 
 CREATE TABLE posts (
     id               bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -362,7 +420,7 @@ goose also maintains its own `goose_db_version` table.
 | Deleted content is erased, not hidden: a deleted post has no body or link (title kept), a deleted comment has no body. | `deleted_post_is_erased`, `deleted_comment_is_erased`. |
 | Codes, sessions, tags links, comments, and votes never outlive their parent row. | `ON DELETE CASCADE` (only fires on hard deletes; soft deletes clean up explicitly). |
 
-Rules enforced in Go rather than the database: 1 to 3 tags per post (a CHECK can't count rows), comment depth = parent depth + 1, no voting on your own content. The edit window and authorship are enforced inside the edit `UPDATE` statements themselves.
+Rules enforced in Go rather than the database: 1 to 3 topics plus at most one format and one level per post (a CHECK can't count rows), no loops in the tag tree, comment depth = parent depth + 1, no voting on your own content. The edit window and authorship are enforced inside the edit `UPDATE` statements themselves.
 
 ### Deliberately not stored
 
@@ -380,6 +438,7 @@ Email, IP addresses, user agents, device names, locations, last-login time, logi
 | 00006_create_posts.sql | `users.is_admin`, `tags` (seeded), `posts`, `post_tags`. |
 | 00007_create_comments.sql | `comments`. |
 | 00008_create_votes.sql | `posts.upvotes/downvotes`, `score_matches_votes`, `post_votes`, `comment_votes`. |
+| 00010_tags_v2.sql | Tags v2: `display_name`, `description`, `facet`; `tag_parents`, `tag_aliases`, `tag_closure`; the starter tree (generated from the reviewed tree file); old tags renamed in place so their posts follow (`food`, `tech`, `diy`, `ask`, `show`). Its Down removes the new tags and restores the old ten. |
 | 00009_erase_deleted_content.sql | `deleted_post_is_erased`; comment body may be empty only when deleted; `deleted_comment_is_erased`. |
 
 ### Query conventions
@@ -396,8 +455,10 @@ All queries use `$1`-style placeholders, never string building with input (no SQ
 |---|---|---|---|
 | GET `/` | `handleHome` (home.go) | | Popular today (hot) + active. |
 | GET `/new`, `/active`, `/top` | `handleList` (home.go) | | Paginated with `?after=<cursor>`. |
-| GET `/t/{tag}` | `handleTag` (home.go) | | Unknown tags 404. |
-| GET `/tags` | `handleTags` (home.go) | | All tags with counts. |
+| GET `/t/{tag}` | `handleTag` (tags.go) | | Newest posts under the tag, including everything below it; `?only=1` for exactly this tag. Aliases and old names 301 to the canonical slug (query kept); a name meaning several tags ("football") shows a choice page; unknown names 404. |
+| GET `/tags` | `handleTags` (tags.go) | | The tree two levels deep, with counts, plus formats and levels. |
+| GET `/tags/suggest?topics=` | `handleTopicSuggest` (tags.go) | noStore; limit `suggest` | htmx, while typing in the topics box: the `topichelp` fragment (suggestions for the part after the last comma, plus what the box already holds). |
+| GET `/tags/pick?choose=<slug>&topics=` | `handleTopicPick` (tags.go) | noStore; limit `suggest` | htmx, a suggestion clicked: the whole `topicfield` fragment with the topic put in, focused. 400 for anything but a real topic. |
 | GET `/robots.txt` | `robotsTxt` (headers.go) | | `Disallow: /`. |
 | GET `/submit`, POST `/submit` | `handleSubmitPage`, `handleSubmit` (posts.go) | noStore; POST: limit `submit` | Login required. |
 | GET `/p/{id}` | `handlePost` (posts.go) | | Post, comments, `?sort=best|new|old`. |
@@ -414,7 +475,7 @@ All queries use `$1`-style placeholders, never string building with input (no SQ
 | GET/POST `/signup`, GET `/signup/name` | signup.go | limits `names`/`signup`, noStore | |
 | GET/POST `/login`, POST `/logout` | login.go | POST login: limit `login`, noStore | Logout deletes all sessions. |
 | GET `/account`, POST `/account/password`, POST `/account/delete`, GET `/goodbye` | account.go | password/delete: limit `login`, noStore | |
-| GET `/account/history` | `handleHistory` (history.go) | noStore | Private. `?show=posts|comments`, `&after=<cursor>`. |
+| GET `/account/history` | `handleHistory` (history.go) | noStore | Private. `?show=posts|comments|upvoted|downvoted` (anything else means posts), `&after=<cursor>`. |
 | GET/POST `/recover`, GET `/recovered` | recover.go | POST: limit `recover`, noStore | |
 | GET `/static/...` | Go file server | revalidate | |
 
@@ -471,6 +532,7 @@ Token buckets held only in memory: "burst" is how many at once, then one more pe
 | `submit` | 10, 1 per 6s | IP | POST `/submit` |
 | `posting` | 5, 1 per 5 min | account | Inside `handleSubmit`, when publishing |
 | `editing` | 20, 1 per 10s | account | Saving edits to posts and comments |
+| `suggest` | 40, 1 per 250 ms | IP | Topic suggestions and picks while typing |
 | `comment` | 20, 1 per 3s | IP | POST `/p/{id}/comment` |
 | `commenting` | 10, 1 per 30s | account | Inside `handleComment`, when publishing |
 | `vote` | 30, 1 per 3s | IP | POST `/vote` |
@@ -506,19 +568,23 @@ To add a form: add a `formRule`, a token field set via `s.formToken(rule)` where
 
 ### 7.10 Posts (web/posts.go, store/posts.go, internal/markdown)
 
-**Submitting** (`/submit`, login required): a title (1 to 200 characters), an optional link (complete `http(s)://` URLs only, up to 2000), optional Markdown text (up to 40,000), and 1 to 3 tags from the curated list. Everything typed is kept when the form is shown again with errors. Validation, then the per-account `posting` limit, then `store.CreatePost` inserts the post and its tags in one transaction with a random 8-character public ID (retried on the astronomically unlikely collision), and a content hash for future duplicate detection. Redirects to the new post.
+**Submitting** (`/submit`, login required): a title (1 to 200 characters), an optional link (complete `http(s)://` URLs only, up to 2000), optional Markdown text (up to 40,000), and tags: 1 to 3 topics typed into one box, separated by commas, plus an optional format and level from drop-downs (see Tags below). Everything typed is kept when the form is shown again with errors. Validation, then the per-account `posting` limit, then `store.CreatePost` inserts the post and its tags in one transaction with a random 8-character public ID (retried on the astronomically unlikely collision), and a content hash for future duplicate detection. Redirects to the new post.
 
 **Public IDs** are random (`a-z2-7`, 40 bits) so nobody can walk `/p/1, /p/2...` to scrape everything or gauge site activity. URL patterns are validated before any database lookup.
 
-**Markdown** (`markdown.Render`): goldmark with raw HTML off, then bluemonday with an allowlist (`p, br, strong, em, del, ul, ol, li, blockquote, code, pre, hr, a[href]`). No headings (stripped, text kept), no images (an external image would leak every reader's IP to its host), only `http`/`https` links, always `rel="nofollow"`. Rendered on every display, so tightening the rules fixes old posts too. This is the only place in Snowball that returns `template.HTML`, and its tests pin down that scripts, raw HTML, `javascript:` links, images, iframes, headings, and style attributes can't get through. A post's own link gets `rel="nofollow ugc noopener"`. Spoiler tags need a small custom extension (backlog).
+**Markdown** (`markdown.Render`): goldmark with raw HTML off, then bluemonday with an allowlist (`p, br, strong, em, del, ul, ol, li, blockquote, code, pre, hr, a[href]`). No headings (stripped, text kept), no images (an external image would leak every reader's IP to its host), only `http`/`https` links, always `rel="nofollow"`. Rendered on every display, so tightening the rules fixes old posts too. This is the only place in Snowball that returns `template.HTML`, and its tests pin down that scripts, raw HTML, `javascript:` links, images, iframes, headings, and style attributes can't get through. A post's own link gets `rel="nofollow ugc noopener"`. In lists, a title always opens the post page; for link posts, the domain beside it is the link out. On the post page, the title links out. Spoiler tags need a small custom extension (backlog).
 
 **The post page** (`/p/{id}`): title (linked for link posts, with the domain), vote arrows, time, author (or "[deleted]"), tags, "edited" marker, rendered body, then comments.
 
+**Tags on posts** (internal/tags, web/tags.go, partials/tagpicker.html). The tag tree lives in memory (`Server.tagTree`, an atomic pointer to an immutable `tags.Tree`, loaded at startup by `loadTags`). `Tree.Choose` turns the form into tag IDs: typed topics are normalized (`tags.Normalize`: NFKC, lowercase, only letters, digits, `+` and `#`) and matched against slugs, display names and aliases; an unknown name, an ambiguous one ("football"), or a format typed as a topic each get a message saying what to do; a topic and its ancestor keep only the deeper one; then 1 to 3 topics. Format and level must be real tags of that facet (anything else means a tampered form). Posts store only the chosen tag IDs in `post_tags`. On display, `Tree.Chips` shows topics (by name), then the format (italic), then the level (dashed border). The edit page fills the box back in with `Tree.SelectionFor` (display names), which `Choose` accepts again.
+
+**Topic type-ahead** (htmx; `topicfield` and `topichelp` in partials/tagpicker.html). The topics box stays a plain text field; htmx adds `hx-get="/tags/suggest"` with `hx-trigger="input changed delay:200ms"` and `hx-sync="this:replace"` (a newer keystroke cancels the request in flight). The server splits the box with `tags.Typing` (settled parts before the last comma, the part being typed after it) and ranks matches with `Tree.Suggest`: exact name or alias, then display name or slug prefix, alias prefix, a word in the display name, and from three letters on anything containing it; ties go to the busier tag (cached counts), then alphabetical; at most 8, each shown with its place in the tree ("Sourdough in Food & drink › Baking › Bread"). Settled topics and their ancestors aren't offered again; with three settled nothing is offered. Under the box, `Tree.Recognized` confirms what's already matched and what it brings along ("Topics: Sourdough. Also shows under Baking, Bread, Food & drink."), also on page load (handy on the edit page). Each suggestion is a `<button type="button">` asking `/tags/pick`, which returns the whole field with `tags.WithPick` applied (settled parts kept, the pick's display name added, then ", ") and `autofocus`; snowball.js puts the caret at the end and adds arrow keys (Down from the box into the list, Up/Down within it, Escape back). The matching lives only in Go, so suggestions can never disagree with what posting accepts, and no tag list is shipped to the page. Without JavaScript nothing changes: the box is matched when the form is sent.
+
 **Admin removal**: `POST /p/{id}/remove` sets `removed_at`. Removed posts vanish from every list and count, show "[removed]" to everyone else, take no new comments or votes, and stay fully visible to the admin with a banner. The endpoint answers non-admins with a 404 so it doesn't admit it exists.
 
-### 7.11 Lists, tags, and ranking (web/home.go, store/lists.go)
+### 7.11 Lists, tags, and ranking (web/home.go, web/tags.go, store/lists.go)
 
-`store.ListPosts` serves every list with options: sort, optional tag, cursor, limit. Removed and deleted posts never appear. Each list fetches one more post than it shows to know whether another page exists.
+`store.ListPosts` serves every list with options: sort, optional tag (`TagID`, with `TagOnly` for exactly that tag), cursor, limit. A tag filter joins `tag_closure`, so a tag page includes every post tagged with anything below it. Removed and deleted posts never appear. Each list fetches one more post than it shows to know whether another page exists.
 
 | Sort | Order | Window | Used by |
 |---|---|---|---|
@@ -531,7 +597,9 @@ The hot formula is Reddit's: score counts logarithmically (1 to 10 points matter
 
 **Keyset pagination**: "older posts" links carry `?after=<value>.<id>` (the last post's sort key, as microseconds or score, plus its ID to break ties). The next page queries `(key, id) < (cursor)`: fast at any size, and new posts arriving never cause skips or repeats. A malformed cursor redirects to the first page. Later pages offer "back to the start".
 
-Partials shared by all list pages: `sortnav` (the sort bar, current sort in bold, "new post" button for logged-in users) and `sidebar` (About, Tags with counts, House rules). Rank numbers come from a CSS counter and appear only on the ranked "Popular today" list (`.posts.unranked` hides them elsewhere). The footer's post count is cached in memory (refreshed every minute, bumped immediately on new posts, refreshed on removals).
+Partials shared by all list pages: `sortnav` (the sort bar, current sort in bold, "new post" button for logged-in users) and `sidebar` (About, the 12 busiest top-level topics with counts, House rules).
+
+**Tag pages** show the path above the tag (first parent at each step, alphabetically), any other parents ("Also under"), the description, the children with counts, and a switch between "including everything below" and "this tag only". Up goes to the parent tag, or to `/tags` for a top-level one. **Tag counts** include everything below a tag, count each post once (`store.TagPostCounts`, over `tag_closure`), and are cached with the footer's post count: refreshed every minute, after removals, and in the background after a new post. On the large seed this took list pages from about 75 ms to 4 to 12 ms. Rank numbers come from a CSS counter and appear only on the ranked "Popular today" list (`.posts.unranked` hides them elsewhere). The footer's post count is cached in memory (refreshed every minute, bumped immediately on new posts, refreshed on removals).
 
 ### 7.12 Comments (web/comments.go, store/comments.go)
 
@@ -569,7 +637,9 @@ The **database clock decides**: `EditPost` and `EditComment` are single `UPDATE`
 
 ### 7.15 Private history and self-deletion (web/history.go, store/deletes.go)
 
-`/account/history` lists the viewer's own posts or comments (tabs), newest first, 25 per page with keyset pagination by creation time. Items the admin removed appear labeled "removed by the admin" (only to their author); items the author deleted don't appear. Comment entries show a plain-text snippet (`snippet`, first 160 characters).
+`/account/history` ("Your history") lists the viewer's own posts or comments, or what they upvoted or downvoted (a row of four choices), newest first, 25 per page with keyset pagination by creation time. Items the admin removed appear labeled "removed by the admin" (only to their author); items the author deleted don't appear. Comment entries show a plain-text snippet (`snippet`, first 160 characters).
+
+**Upvoted and downvoted** (`MyVotedItems`) list posts and comments together, found by the viewer's vote fingerprint (the same lookup that highlights arrows, so nothing new is stored or exposed; the votes tables' primary key `(voter, ...)` makes it an indexed lookup). They're ordered by when each item was written, since votes deliberately have no timestamps; the page says so. Each entry keeps its vote arrows, so a vote can be changed or taken back there. Left out: anything the admin removed (and comments on removed posts), and deleted comments (nothing left to show); deleted posts stay, by title, with voting closed. Posts and comments are paged as one list with the cursor `(created_at, key)`, where `key` is `id*2+1` for posts and `id*2` for comments, unique across both tables. On the large seed, the busiest voter's page takes about 20 ms.
 
 **Deleting** is offered on each entry as a `<details>` element: "delete" opens a confirmation explaining what happens, and only the red button inside deletes. No JavaScript, and one stray click can't delete anything.
 
@@ -597,7 +667,7 @@ No log line contains passwords, tokens, recovery codes, cookies, IP addresses, o
 
 **Name colors.** A username's first word is a color; `colorClass` (web/home.go) maps it to `nc-blue` ... `nc-purple` (fallback `nc-x0`..`nc-x3` by hash), and CSS sets `--c` per class. The owner chose vibrant values.
 
-**Navigation.** The logo goes home. Every page with a parent shows a quiet `← label` up link under the yellow bar (section 5, Rendering): posts, account, submit, tags, login, sign-up, goodbye, and recovered go to the front page; tag pages to all tags; history to the account; reply, edit, and thread pages to their post; recovery to login. The front page and sort lists have none (the sort bar covers them), and the welcome page deliberately has none, so its only way on is "I've saved them".
+**Navigation.** The logo goes home. Every page with a parent shows a quiet `← label` up link under the yellow bar (section 5, Rendering): posts, account, submit, tags, login, sign-up, goodbye, and recovered go to the front page; tag pages to their parent tag (or all tags); history to the account; reply, edit, and thread pages to their post; recovery to login. The front page and sort lists have none (the sort bar covers them), and the welcome page deliberately has none, so its only way on is "I've saved them".
 
 **Hidden username.** The logged-in header shows eight dots plus a "show name" checkbox (shoulder-surfing protection), a boxed **account** button, and log out. snowball.js wires every `.reveal-group` (header and account page), resetting to hidden on `pageshow`.
 
@@ -614,7 +684,13 @@ No log line contains passwords, tokens, recovery codes, cookies, IP addresses, o
 | Generated names, no choosing, no renaming | Anonymity; accountability for moderation; reputation can't be shed. |
 | One name per account, shown everywhere | Accounts can have personality and history without identifying a person. |
 | No email; recovery codes instead | No personal data. Losing password and codes means losing the account, and users must acknowledge this. |
-| Tags instead of boards | One shared room is easier to moderate and livelier when small. 1 to 3 tags per post from a curated list; new tags suggested under `meta`. |
+| Tags instead of boards | One shared room is easier to moderate and livelier when small. Tags are the site's only community and search structure, so they get a full design (v2, section 11.1). |
+| Tags v2: a tree of concepts with aliases | Lets very niche topics be found without splintering into duplicates. Owner's own design doc, adapted to one-person running. |
+| No catch-all "general" tag | Every post needs a real topic; the tree must be broad enough instead. Posts that fit nowhere pick the closest tag and request a better one. |
+| Politics and religion included | The site should hold any conversation; both are their own top-level tags. Moderation tools become more urgent because of them. |
+| Adult content later, as a post flag | Explicit content waits for moderation and legal research (age-verification laws, host terms). When it comes, NSFW is a flag on the post (hidden by default, opt-in), never a tag; tags can force it. |
+| Topic suggestions come from the server | The type-ahead asks the same Go code that checks the form, so a suggestion can never be refused on posting, and the page carries no tag list or JavaScript matcher to keep in step. Costs a small request per pause in typing (rate limited, around 1 ms each). |
+| Follows and mutes stored on the account | Accepted cost: visible only on private account pages, and an account carries no real-world identity. |
 | Front page is a hybrid | "Popular today" (hot ranking) plus bump-ordered "active" conversations. |
 | Every logout logs out everywhere; password change too | Fits the "leave no trace" character. |
 | Deleted names are never reused | Prevents a newcomer inheriting someone else's reputation. Soft delete. |
@@ -623,6 +699,7 @@ No log line contains passwords, tokens, recovery codes, cookies, IP addresses, o
 | No third-party CAPTCHA or tracking | Would contradict the privacy promise. All defenses are self-hosted. |
 | Discussions public for now; members-only later | A young forum needs visitors to see what they'd join. Built so it can be switched later. |
 | Out of search engines from day one | `robots.txt`, `noindex` header and meta tag. |
+| Your own votes are listed only on your private page, by item date | The site already knows your fingerprint (to highlight arrows), so listing them adds no exposure. No vote timestamps, so no "when you voted" order. |
 | Complete post history only on a private page | Nobody can browse someone's history in one place; assembling a profile means hunting thread by thread. Users who dox themselves are responsible for that. |
 | Keep every post (no expiry) | An archive problem is a good problem to have. |
 | Random public IDs for posts and comments | Prevents enumeration scraping and hides site volume. |
@@ -680,9 +757,9 @@ The race detector needs cgo and so a C compiler; the script asks `go env CGO_ENA
 
 ### Test databases
 
-Database tests need Postgres running (`docker compose up -d`). Each package uses its own database so packages can run in parallel without emptying each other's tables: `snowball_test` (store), `snowball_web_test` (web), `snowball_migrations_test` (the round trip, which never holds data, since some Down sections refuse to run when certain data exists). `testdb.Prepare` creates the database if missing and migrates it up; it refuses any name not ending in `_test`, as a safety catch. The server and credentials come from `SNOWBALL_TEST_DATABASE_URL`, defaulting to the compose development values (`testdb.DefaultURL`); CI sets it for its Postgres service.
+Database tests need Postgres running (`docker compose up -d`). Each package uses its own database so packages can run in parallel without emptying each other's tables: `snowball_test` (store), `snowball_web_test` (web), `snowball_migrations_test` (the round trip, which never holds data, since some Down sections refuse to run when certain data exists). `testdb.Prepare` refuses any name not ending in `_test`, as a safety catch, then has `dbsetup.Ensure` create the database if missing and migrate it up. The server and credentials come from `SNOWBALL_TEST_DATABASE_URL`, defaulting to the compose development values (`testdb.DefaultURL`); CI sets it for its Postgres service.
 
-Each test starts from empty tables: `freshDB` (store) and `newSite` (web, which also builds a new server, so rate limits start untouched) run `TRUNCATE ... RESTART IDENTITY CASCADE` over `testdb.Tables` (every table except `tags`, which keeps its seeded rows). **When a migration adds a table, add it to `testdb.Tables`.** Tests in one package therefore run one at a time (no `t.Parallel()`).
+Each test starts from empty tables: `freshDB` (store) and `newSite` (web, which also builds a new server, so rate limits start untouched) run `TRUNCATE ... RESTART IDENTITY CASCADE` over `testdb.Tables` (every table except the tag tables, which keep the starter tree from the migrations). **When a migration adds a table, add it to `testdb.Tables`.** Tests in one package therefore run one at a time (no `t.Parallel()`).
 
 `go test -short ./...` skips everything that needs Postgres. Each package's `TestMain` prepares its database once, and fails with a hint ("is Postgres running?") when it can't.
 
@@ -720,8 +797,9 @@ The concurrency tests cover: one voter's rapid clicks on one arrow (must all suc
 
 - `auth`: hashing and verification, damaged and unsafe hashes, normalization, password rules, the hashing semaphore, form tokens, voter fingerprints and the vote secret's minimum length.
 - `markdown`: allowed formatting, dangerous input blocked, links `nofollow`, headings flattened to text.
-- `store`: usernames unique forever and well-formed, credentials, sessions, logout everywhere, password change, recovery codes spent exactly once, account deletion (with and without content, including vote unlinking), posts and their database-enforced limits, lists hiding removed and deleted posts, pagination that never skips or repeats, comments and their rules, vote toggling and rules, comment votes and "my votes", vote tables staying private, edit windows and grace, deletion erasing content but keeping threads, history, the database refusing broken data, cursor parsing, and the concurrency cases above.
-- `web`: client IPs, limiters (burst, forgetting, status), the login guard, durations, post validation, tags, number formatting, Wilson scores, comment trees and depth rules, safe return paths, vote widget rules, the edit window, history snippets; and through whole requests: login (including bot checks), logout everywhere, sign-up (including a forged name), logged-out redirects, cross-site refusal, nobody editing or deleting others' work, admin endpoints hidden from everyone else, submitting, commenting and replying, voting; plus the smoke tests of every page and fragment.
+- `store`: usernames unique forever and well-formed, credentials, sessions, logout everywhere, password change, recovery codes spent exactly once, account deletion (with and without content, including vote unlinking), posts and their database-enforced limits, lists hiding removed and deleted posts, pagination that never skips or repeats, comments and their rules, vote toggling and rules, comment votes and "my votes", vote tables staying private, edit windows and grace, deletion erasing content but keeping threads, history, the voted history views (what's included, and paging posts and comments together without skips or repeats), the database refusing broken data, cursor parsing, and the concurrency cases above.
+- `tags`: normalizing names, ancestors and paths (including two parents), loops refused, lookups (aliases, ambiguity), choosing a post's tags (forgiving spelling, implied ancestors, limits, wrong facets, tampered values), chips and the edit round trip.
+- `web`: client IPs, limiters (burst, forgetting, status), the login guard, durations, post validation, number formatting, Wilson scores, comment trees and depth rules, safe return paths, vote widget rules, the edit window, history snippets; and through whole requests: login (including bot checks), logout everywhere, sign-up (including a forged name), logged-out redirects, cross-site refusal, nobody editing or deleting others' work, admin endpoints hidden from everyone else, submitting, commenting and replying, voting, the upvoted and downvoted views (private to the voter, unvoting removes an item), tag pages including everything below and the "this tag only" switch, old names and aliases redirecting, ambiguous names, the tag index and sidebar counts, typed topics on submit (unknown, ambiguous, forgiving spelling) and the edit page's tag round trip, topic suggestions (ranking, shared aliases, settled topics and their ancestors left out, three-topic cap, no match, length cap) and picks (what the box ends up holding posts cleanly; formats and unknown slugs refused); plus the smoke tests of every page and fragment.
 - `testdb`: the migration round trip.
 
 Not covered yet: a red-team bot attacking the defenses from outside, load testing, and the browser side (snowball.js, htmx behavior in a real browser).
@@ -734,7 +812,37 @@ Go 1.27.2 writes export data that staticcheck 2026.2.1 (v0.8.1) can't read ("exp
 
 ## 11. Roadmap and backlog
 
-### 11.1 Posting chapter: status and next slices
+Order from here: tags v2 Phase 1 (11.1), then the performance pass (11.5), then moderation (11.2), then images.
+
+### 11.1 Tag system v2 (designed, not built)
+
+The owner's design doc ("Forum Tag System: rules and examples") is the base; the starter tree lives in a separate working doc ("Snowball Starter Tag Tree"). What was decided:
+
+**Concepts and structure.**
+- A tag is a concept with one canonical slug (`sm64-blj`), a display name ("BLJ (Backwards Long Jump)"), a one-line description, and any number of aliases. Typed input is normalized (case, spaces, hyphens, punctuation) and matched against slugs and aliases. Plurals are handled by aliases, not by stripping a trailing "s" (which breaks "news", "glass").
+- Tags form a tree that allows several parents (a directed graph without loops; a change that would create a loop is refused). Picking a tag implies all its ancestors. Posts store only the tags chosen; ancestors are computed when browsing (the `tag_closure` table holds every ancestor and descendant pair, rebuilt when the tree changes), so moving a tag fixes every post at once.
+- Three facets: Topic (1 to 3 per post, required), Format (0 or 1: question, discussion, guide, showcase, news, review), Level (0 or 1: beginner, intermediate, advanced). At most 5 tags per post. Format and Level are fixed lists only the admin changes. `video`/`pov` formats wait for media posts.
+- Current events are not a topic: a news post takes the `news` format plus its subject, and a news page lists every news post.
+- Naming rules: lowercase slugs; the community's own name; scoped names for ambiguous terms (`sm64-wall-clip`); name the subject, never the post type (no `-tips`, `-help`); cross-cutting concepts exist once; combine two tags before creating a compound one.
+- Tag pages include descendants, with a "this tag only" switch. Sidebar and tag counts include descendants and are cached, not counted on every page load.
+
+**Status.** Phase 1 part A is built: schema and migration 00010, typed topics with format and level, tag pages with everything below them, `/tags`, cached counts, the seed program tagging from the tree. Part B's first half is built: type-ahead suggestions in the topics box (section 7.10). Next: the admin tag page (create, edit, rename, merge, re-parent, aliases), which also rebuilds `tag_closure` and reloads the in-memory tree.
+
+**Starter tree.** 341 tags: 35 top-level (Humanities was split into History and Philosophy; Religion, Politics, Law, Fashion & beauty, Internet culture, True crime, Cycling, LGBTQ+ and Paranormal are roots; Everyday life became Relationships and Family), about 250 first-layer and 50 deeper tags. Every tag went through two independent reviews; 12 with more than one plausible home are parked (digital photography, comics and manga, worldbuilding, blogging, computer science, economics, civil rights, criminal trials, mythology, disability, living abroad, podcasts). Places (countries, cities) wait. The working data is a plain-text tree file that will feed the migration.
+
+**Two-parent rule.** Picking a tag files the post under all its ancestors, so a tag gets a second parent only if every post using it belongs under both (bike racing: cycling and sports; never horror under both books and film). Genres are scoped to their medium (`fantasy-books`). Ambiguous words get scoped slugs (`go-language`, `rock-music`, `ice-hockey`) and, where a word really means two tags, a shared alias that makes the picker ask (`football`, `go`). Today's ten tags map onto it (`food` to `food-and-drink`, `diy` to `crafts`, `tech` to `technology`, `ask` to the `question` format, `show` to `showcase`); old names become aliases so `/t/food` keeps working.
+
+**Who changes tags, and how tags are added over time.** The starter tree goes in once by migration. After that, tags are data: the admin creates, renames, merges (the old name becomes an alias), and re-parents them from an admin page, with no migration or deploy. Members ask for tags under `meta` > `site-tags`. The admin is the only curator to start.
+
+**Phases.**
+1. Phase 1 (next): tag schema (display name, description, facet, aliases, parents, closure), the migration with the starter tree and the old-tag mapping, the type-ahead picker (htmx) with ancestors shown as "included", 1 to 3 topics plus optional format and level, tag pages with descendants, cached counts, and the admin tag page.
+2. Phase 2: member-created provisional tags (account age and post minimums, duplicate checks by spelling with Postgres `pg_trgm`, a parent suggested from the post's other tags), the admin's approval queue, expiry by merge or removal. Provisional tags stay out of autocomplete until approved, and a word blocklist applies to tag names.
+3. Phase 3: AND/OR/NOT filters; follow and mute (stored on the account; following or muting includes descendants; mute beats follow); saved feeds as shareable links with no owner.
+4. Later, if ever: trusted members who retag others' posts (needs reputation and notifications).
+
+**Adult content.** Waits. Sexual health and relationships as text discussion can be topics under normal rules. Explicit material needs moderation tools and legal research first (several US states and the UK require age verification for sites with substantial sexual content; it conflicts with anonymity; some hosts forbid it). When it comes, NSFW is a flag on the post: authors and the admin can set it, a tag can force it, comments inherit it, viewers opt in with an account setting (off by default, never for logged-out visitors), and a direct link shows a confirmation step. It can grow into a rating or content warnings (spoilers use the same mechanism).
+
+### 11.2 Posting chapter: status and next slices
 
 | Slice | Status |
 |---|---|
@@ -765,7 +873,7 @@ Anti-bot layers still to build into posting:
 | Downvote-specific budget | Held in reserve |
 | Vote ring detection | With moderation |
 
-### 11.2 Security switches (build when needed or before launch)
+### 11.3 Security switches (build when needed or before launch)
 
 **ALTCHA (proof-of-work on sign-up).** Self-hosted, privacy-first. Serve the widget's *external* build (component, worker, CSS as separate files from `static/`, so the strict CSP needs no `blob:` or inline styles), add `GET /altcha/challenge` (rate limited, no-store) using `github.com/altcha-org/altcha-lib-go`, place the widget in the sign-up form with auto-solve on page load, verify in `handleSignup` beside `checkForm`, and remember spent solutions in memory (replay protection). Match the widget version to the protocol the Go library supports (v1 hash-based vs v2 key-derivation). Needs HTTPS or localhost. Makes sign-up require JavaScript. About half a day.
 
@@ -775,11 +883,11 @@ Anti-bot layers still to build into posting:
 
 **Members-only reading.** The switch for when the user base is strong: reading requires an account, per page type.
 
-### 11.3 Production and deployment checklist
+### 11.4 Production and deployment checklist
 
 VPS with Docker Compose running Postgres, Snowball, and Caddy (automatic HTTPS). Set `DATABASE_URL` with real credentials, **`SNOWBALL_VOTE_SECRET` (32+ random characters, stable forever, backed up separately from the database)**, and `SNOWBALL_TRUST_PROXY=1`. HSTS via Caddy. Caddy access logs off or scrubbed of IPs. Nightly `pg_dump` backups shipped off the server (without the vote secret alongside). Embed templates and static files into the binary with Go's `embed`. Versioned static URLs with long caching, replacing `revalidate`. Styled 429 and 503 pages. Optionally Anubis. Optionally a trap link for crawlers that ignore `robots.txt`. Rewrite or remove the placeholder admin note.
 
-### 11.4 Smaller backlog items
+### 11.5 Smaller backlog items
 
 | Item | Notes |
 |---|---|
@@ -794,6 +902,7 @@ VPS with Docker Compose running Postgres, Snowball, and Caddy (automatic HTTPS).
 | Comment paging | Threads over 2,000 comments are truncated today. |
 | Delete from the post page | Deleting is offered only on the history page today; a delete control beside "edit" on your own posts and comments would be a small addition. |
 | Hot ranking for more lists | Only "Popular today" uses it; a `/hot` list or tag-page option could follow. |
+| Performance pass (after tags v2 Phase 1) | Tags v2 fixed the biggest cost (sidebar counts on every page; now cached). On the large seed, list and tag pages take 4 to 12 ms, but `/t/question` (a format on a quarter of all posts) takes about 115 ms, and the background count query about 250 ms. Next: `EXPLAIN ANALYZE` the main queries, fix what's slow, and measure again. |
 | sqlc | Considered; on Windows its Postgres parser needs cgo, so run it via Docker if adopted. |
 | More testing | A red-team bot to attack the defenses from outside; load testing before launch; browser tests if the JavaScript grows. |
 | Pinned tool versions | staticcheck and govulncheck run `@latest`. If upstream surprises become a nuisance, pin them with Go's `tool` directive in go.mod (`go get -tool ...`) and run them with `go tool`. |

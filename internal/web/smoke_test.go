@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"snowball/internal/store"
 )
 
 // Headers every response must carry, whatever it is (see headers.go).
@@ -33,6 +35,15 @@ func TestSmokeEveryPage(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Votes in both directions, so the voted history views have arrows to draw.
+	if _, _, err := testStore.Vote(ctx, store.VotePost, post.PublicID, s.srv.voters.Voter(reader.id), reader.id, 1); err != nil {
+		t.Fatal(err)
+	}
+	disliked := s.post(t, author, "A post worth disliking")
+	if _, _, err := testStore.Vote(ctx, store.VotePost, disliked.PublicID, s.srv.voters.Voter(reader.id), reader.id, -1); err != nil {
+		t.Fatal(err)
+	}
+
 	p := "/p/" + post.PublicID
 	c := p + "/c/" + cid
 
@@ -48,7 +59,11 @@ func TestSmokeEveryPage(t *testing.T) {
 		{"/active", nil, 200, "page"},
 		{"/top", nil, 200, "page"},
 		{"/tags", nil, 200, "page"},
-		{"/t/tech", nil, 200, "page"},
+		{"/t/technology", nil, 200, "page"},
+		{"/t/bread?only=1", nil, 200, "page"},
+		{"/t/question", nil, 200, "page"},
+		{"/t/football", nil, 200, "page"}, // means two tags: asks which
+		{"/t/food", nil, 301, "other"},    // an old name: goes to food-and-drink
 		{p, nil, 200, "page"},
 		{p + "?sort=new", nil, 200, "page"},
 		{c, nil, 200, "page"},
@@ -68,6 +83,8 @@ func TestSmokeEveryPage(t *testing.T) {
 		{"/account", reader, 200, "page"},
 		{"/account/history", reader, 200, "page"},
 		{"/account/history?show=comments", reader, 200, "page"},
+		{"/account/history?show=upvoted", reader, 200, "page"},
+		{"/account/history?show=downvoted", reader, 200, "page"},
 		{"/recovered", reader, 200, "page"},
 		{c + "/reply", reader, 200, "page"},
 		{c + "/edit", reader, 200, "page"}, // reader wrote the comment
@@ -151,6 +168,8 @@ func TestSmokeFragments(t *testing.T) {
 		{"/p/" + post.PublicID + "/c/" + cid + "/reply", reader, "<textarea"},
 		{"/p/" + post.PublicID + "/c/" + cid + "/edit", reader, "<textarea"},
 		{"/signup/name", nil, `name="sig"`},
+		{"/tags/suggest?topics=sour", nil, "choose=sourdough"},
+		{"/tags/pick?choose=sourdough&topics=sour", nil, `id="topics"`},
 	} {
 		rec := s.get(f.path, f.who, "HX-Request", "true")
 		expectStatus(t, "htmx GET "+f.path, rec, http.StatusOK)

@@ -67,10 +67,11 @@ func ParseCursor(s string) (Cursor, error) {
 
 // ListOptions picks which posts to list.
 type ListOptions struct {
-	Sort  Sort
-	Tag   string  // only posts with this tag; "" for all
-	After *Cursor // start after this post; nil for the first page
-	Limit int
+	Sort    Sort
+	TagID   int     // only posts under this tag (0 for all), including its descendants
+	TagOnly bool    // with TagID: only posts carrying exactly that tag
+	After   *Cursor // start after this post; nil for the first page
+	Limit   int
 }
 
 // ListPosts returns one page of visible posts (never removed or deleted),
@@ -90,10 +91,18 @@ func (s *Store) ListPosts(ctx context.Context, opt ListOptions) (posts []Post, n
 
 	where = append(where, "p.removed_at IS NULL", "p.deleted_at IS NULL")
 
-	if opt.Tag != "" {
+	switch {
+	case opt.TagID != 0 && opt.TagOnly:
 		where = append(where, `EXISTS (
-			SELECT 1 FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
-			WHERE pt.post_id = p.id AND t.name = `+arg(opt.Tag)+`)`)
+			SELECT 1 FROM post_tags pt
+			WHERE pt.post_id = p.id AND pt.tag_id = `+arg(opt.TagID)+`)`)
+	case opt.TagID != 0:
+		// The closure table holds every (ancestor, descendant) pair, so
+		// "tagged with this tag or anything below it" is one join.
+		where = append(where, `EXISTS (
+			SELECT 1 FROM post_tags pt
+			JOIN tag_closure c ON c.descendant_id = pt.tag_id
+			WHERE pt.post_id = p.id AND c.ancestor_id = `+arg(opt.TagID)+`)`)
 	}
 
 	// Each sort has a key column; the cursor compares against the same pair.
@@ -172,39 +181,6 @@ func (s *Store) ListPosts(ctx context.Context, opt ListOptions) (posts []Post, n
 		next = &c
 	}
 	return posts, next, nil
-}
-
-// TagCount is a tag with how many visible posts carry it.
-type TagCount struct {
-	Name  string
-	Count int64 // int64 to match count(), and the commas template function
-}
-
-// TagCounts lists every tag with its visible post count, busiest first.
-func (s *Store) TagCounts(ctx context.Context) ([]TagCount, error) {
-	rows, err := s.db.Query(ctx, `
-		SELECT t.name, count(p.id)
-		FROM tags t
-		LEFT JOIN post_tags pt ON pt.tag_id = t.id
-		LEFT JOIN posts p ON p.id = pt.post_id
-		                 AND p.removed_at IS NULL AND p.deleted_at IS NULL
-		GROUP BY t.id
-		ORDER BY count(p.id) DESC, t.name`)
-	if err != nil {
-		return nil, err
-	}
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (TagCount, error) {
-		var tc TagCount
-		err := row.Scan(&tc.Name, &tc.Count)
-		return tc, err
-	})
-}
-
-// TagExists reports whether a tag name is on the curated list.
-func (s *Store) TagExists(ctx context.Context, name string) (bool, error) {
-	var ok bool
-	err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tags WHERE name = $1)`, name).Scan(&ok)
-	return ok, err
 }
 
 // CountPosts is how many visible posts exist, for the footer.

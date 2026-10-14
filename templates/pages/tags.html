@@ -1,15 +1,40 @@
-{{/* tags.html: every tag, with how many posts carry it. */}}
+{{/* tags.html: the tag tree, two levels deep, with post counts. Deeper tags are on each tag's page. */}}
 {{define "content"}}
-<main class="narrow">
+<main class="tags-page">
   <h1 class="page-title">Tags</h1>
-  <p class="lede">Every post carries one to three of these. Missing one? Suggest it under
-    <a href="/t/meta">meta</a>.</p>
+  <p class="lede">Every post has one to three topics, and can add a format and a level. A topic
+    includes everything below it: a post about sourdough also shows up under Bread, Baking and
+    Food &amp; drink. Missing a topic? Ask under <a href="/t/site-tags">Meta › Site tags</a>.</p>
 
-  <ul class="taglist tag-index">
-    {{range .Tags}}
-    <li><a class="tag" href="/t/{{.Name}}">{{.Name}}</a>
-      <span>{{.Count | commas}} {{if eq .Count 1}}post{{else}}posts{{end}}</span></li>
+  <div class="tag-tree">
+    {{range .Topics}}
+    <section class="tag-branch">
+      <h2><a class="tag" href="/t/{{.Slug}}">{{.Display}}</a> <span>{{.Count | commas}}</span></h2>
+      {{if .Children}}
+      <ul class="taglist">
+        {{range .Children}}<li><a class="tag" href="/t/{{.Slug}}">{{.Display}}</a> <span>{{.Count | commas}}</span></li>
+        {{end}}
+      </ul>
+      {{end}}
+    </section>
     {{end}}
-  </ul>
+  </div>
+
+  <div class="tag-tree">
+    <section class="tag-branch">
+      <h2>Formats</h2>
+      <ul class="taglist">
+        {{range .Formats}}<li><a class="tag tag-format" href="/t/{{.Slug}}" title="{{.Description}}">{{.Display}}</a> <span>{{.Count | commas}}</span></li>
+        {{end}}
+      </ul>
+    </section>
+    <section class="tag-branch">
+      <h2>Levels</h2>
+      <ul class="taglist">
+        {{range .Levels}}<li><a class="tag tag-level" href="/t/{{.Slug}}" title="{{.Description}}">{{.Display}}</a> <span>{{.Count | commas}}</span></li>
+        {{end}}
+      </ul>
+    </section>
+  </div>
 </main>
 {{end}}

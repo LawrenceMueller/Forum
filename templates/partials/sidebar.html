@@ -1,4 +1,4 @@
-{{/* sidebar.html: the boxes beside every list. Expects the tag counts. */}}
+{{/* sidebar.html: the boxes beside every list. Expects []tagLink: the busiest top-level topics. */}}
 {{define "sidebar"}}
 <aside class="sidebar">
   <section class="box">
@@ -11,7 +11,7 @@
   <section class="box">
     <h2>Tags</h2>
     <ul class="taglist">
-      {{range .}}<li><a class="tag" href="/t/{{.Name}}">{{.Name}}</a> <span>{{.Count | commas}}</span></li>
+      {{range .}}<li><a class="tag" href="/t/{{.Slug}}">{{.Display}}</a> <span>{{.Count | commas}}</span></li>
       {{end}}
     </ul>
     <a href="/tags">All Tags</a>
