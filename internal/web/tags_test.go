@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -200,4 +201,63 @@ func TestTopicFieldWithoutJavaScript(t *testing.T) {
 	expectContains(t, "submit", page, `name="topics" type="text" value=""`)
 	expectContains(t, "submit", page, `hx-get="/tags/suggest"`)
 	expectMissing(t, "submit", page, "Matching topics")
+}
+
+// TestStarterTreeIsHealthy checks the real tree, as the migrations leave it
+// (the other tag tests mostly use small made-up trees): no misleading names
+// (tags.Tree.Check), every alias leads back to its tag, and the closure
+// table agrees with the parent links.
+func TestStarterTreeIsHealthy(t *testing.T) {
+	s := newSite(t)
+	tree := s.srv.tree()
+	if tree.Len() < 300 {
+		t.Fatalf("only %d tags: is the starter tree loaded?", tree.Len())
+	}
+	for _, p := range tree.Check() {
+		t.Error(p)
+	}
+	for _, f := range []tags.Facet{tags.Topic, tags.Format, tags.Level} {
+		for _, tag := range tree.All(f) {
+			for _, alias := range tag.Aliases {
+				if !slices.Contains(tree.Lookup(alias), tag) {
+					t.Errorf("the alias %q doesn't lead to %s", alias, tag.Slug)
+				}
+			}
+		}
+	}
+
+	// tag_closure, read back, must hold exactly each tag's ancestors.
+	rows, err := rawDB.Query(ctx, `SELECT ancestor_id, descendant_id, depth FROM tag_closure`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromDB := map[int][]int{}
+	self := map[int]bool{}
+	for rows.Next() {
+		var a, d, depth int
+		if err := rows.Scan(&a, &d, &depth); err != nil {
+			t.Fatal(err)
+		}
+		switch {
+		case a == d && depth == 0:
+			self[d] = true
+		case a != d && depth > 0:
+			fromDB[d] = append(fromDB[d], a)
+		default:
+			t.Errorf("odd closure row %d -> %d at depth %d", a, d, depth)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []tags.Facet{tags.Topic, tags.Format, tags.Level} {
+		for _, tag := range tree.All(f) {
+			got := fromDB[tag.ID]
+			slices.Sort(got)
+			if !self[tag.ID] || !slices.Equal(got, tree.Ancestors(tag.ID)) {
+				t.Errorf("%s: closure says ancestors %v (self row: %v), the parent links say %v",
+					tag.Slug, got, self[tag.ID], tree.Ancestors(tag.ID))
+			}
+		}
+	}
 }

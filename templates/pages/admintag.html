@@ -1,0 +1,139 @@
+{{/*
+  admintag.html: one tag, for the admin. Everything that can change about
+  it, from everyday (names, parents, aliases) to permanent (merge, delete).
+  Each section is its own small form, all sharing one form token.
+*/}}
+{{define "content"}}
+<main class="narrow admin-tag">
+  {{if .Path}}<p class="tag-path">{{range .Path}}<a href="/admin/tags/{{.Slug}}">{{.Display}}</a> › {{end}}</p>{{end}}
+  <h1 class="page-title">{{.Display}} <span class="admin-badge">{{.Facet}}</span></h1>
+  <p class="lede"><code>{{.Slug}}</code> · {{.Count | commas}} visible {{if eq .Count 1}}post{{else}}posts{{end}}{{if .Children}}, everything below included{{end}}
+    · <a href="/t/{{.Slug}}">see its page</a></p>
+
+  {{if .Notice}}<div class="note" role="status"><p>{{.Notice}}</p></div>{{end}}
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  <section class="panel">
+    <h2>Names</h2>
+    <form class="form" method="post" action="/admin/tags/{{.Slug}}/details">
+      {{template "formguard" .FormToken}}
+      <div class="field">
+        <label for="display">Display name</label>
+        <input id="display" name="display" type="text" value="{{.Details.Display}}" required maxlength="60">
+      </div>
+      <div class="field">
+        <label for="slug">Slug <span class="optional">the address: /t/{{.Slug}}</span></label>
+        <input id="slug" name="slug" type="text" value="{{.Details.Slug}}" required maxlength="40"
+               autocapitalize="none" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="description">Description <span class="optional">one line</span></label>
+        <input id="description" name="description" type="text" value="{{.Details.Description}}" maxlength="200">
+      </div>
+      <label class="ack-like"><input type="checkbox" name="keep" value="1" checked>
+        Keep the old slug and name as aliases, so old links and habits still work</label>
+      <button class="button" type="submit">Save</button>
+    </form>
+  </section>
+
+  {{if .IsTopic}}
+  <section class="panel">
+    <h2>Parents</h2>
+    {{if .Parents}}
+    <ul class="admin-list">
+      {{range .Parents}}<li><a href="/admin/tags/{{.Slug}}">{{.Display}}</a>
+        <form class="inline-form" method="post" action="/admin/tags/{{$.Slug}}/parents">
+          {{template "formguard" $.FormToken}}
+          <input type="hidden" name="action" value="remove">
+          <input type="hidden" name="parent" value="{{.Slug}}">
+          <button class="linklike" type="submit">remove</button>
+        </form></li>
+      {{end}}
+    </ul>
+    {{else}}<p>None: it's a top-level topic.</p>{{end}}
+    <form class="admin-inline" method="post" action="/admin/tags/{{.Slug}}/parents">
+      {{template "formguard" .FormToken}}
+      <input type="hidden" name="action" value="add">
+      <label for="parent-name">Add a parent</label>
+      <input id="parent-name" name="name" type="text" required maxlength="60"
+             autocapitalize="none" spellcheck="false" placeholder="name or slug">
+      <button class="button" type="submit">Add</button>
+    </form>
+    <p class="hint">A second parent only if <em>every</em> post with this tag belongs under both.
+      Removing the last parent makes it a top-level topic.</p>
+
+    {{if .Children}}
+    <h3>Underneath it</h3>
+    <ul class="subtags">
+      {{range .Children}}<li><a class="tag" href="/admin/tags/{{.Slug}}">{{.Display}}</a> <span>{{.Count | commas}}</span></li>
+      {{end}}
+    </ul>
+    {{end}}
+  </section>
+  {{end}}
+
+  <section class="panel">
+    <h2>Aliases</h2>
+    <p class="hint">Other names that lead here: spellings, plurals, abbreviations. Matching ignores case,
+      spaces and punctuation, so “sour dough” already finds “sourdough”.</p>
+    {{if .Aliases}}
+    <ul class="admin-list">
+      {{range .Aliases}}<li>{{.}}
+        <form class="inline-form" method="post" action="/admin/tags/{{$.Slug}}/aliases">
+          {{template "formguard" $.FormToken}}
+          <input type="hidden" name="action" value="remove">
+          <input type="hidden" name="alias" value="{{.}}">
+          <button class="linklike" type="submit">remove</button>
+        </form></li>
+      {{end}}
+    </ul>
+    {{else}}<p>None yet.</p>{{end}}
+    <form class="admin-inline" method="post" action="/admin/tags/{{.Slug}}/aliases">
+      {{template "formguard" .FormToken}}
+      <input type="hidden" name="action" value="add">
+      <label for="alias">Add an alias</label>
+      <input id="alias" name="alias" type="text" required maxlength="60" spellcheck="false">
+      <button class="button" type="submit">Add</button>
+    </form>
+  </section>
+
+  <section class="panel panel-danger">
+    <h2>Merge into another tag</h2>
+    <p>For duplicates. Its posts get the other tag instead, anything underneath it moves under the
+      other tag, and its slug, name and aliases all lead there. This tag is then gone for good.</p>
+    <form class="form form-danger" method="post" action="/admin/tags/{{.Slug}}/merge">
+      {{template "formguard" .FormToken}}
+      <div class="field">
+        <label for="into">Merge into</label>
+        <input id="into" name="into" type="text" required maxlength="60"
+               autocapitalize="none" spellcheck="false" placeholder="name or slug of a {{.Facet}}">
+      </div>
+      <label class="ack"><input type="checkbox" name="confirm" value="1" required>
+        I understand this can't be undone</label>
+      <button class="button button-danger" type="submit">Merge</button>
+    </form>
+  </section>
+
+  <section class="panel panel-danger">
+    <h2>Delete</h2>
+    {{if .CanDelete}}
+    <p>Nothing uses this tag, so it can simply go.</p>
+    <form class="form form-danger" method="post" action="/admin/tags/{{.Slug}}/delete">
+      {{template "formguard" .FormToken}}
+      <label class="ack"><input type="checkbox" name="confirm" value="1" required>
+        I understand this can't be undone</label>
+      <button class="button button-danger" type="submit">Delete</button>
+    </form>
+    {{else}}
+    <p>Only a tag with no posts (not even removed ones) and nothing underneath can be deleted.
+      {{if .PostRows}}{{.PostRows | commas}} {{if eq .PostRows 1}}post carries{{else}}posts carry{{end}} exactly
+      this tag{{if .Children}}, and it has tags underneath{{end}}.{{else}}It has tags underneath.{{end}} Merge it instead, so its posts and old links have somewhere to go.</p>
+    {{end}}
+  </section>
+</main>
+{{end}}

@@ -9,6 +9,7 @@
         {{if .Path}}<p class="tag-path">{{range .Path}}<a href="/t/{{.Slug}}">{{.Display}}</a> › {{end}}</p>{{end}}
         <h1 class="section-title list-title">{{$.Heading}} <span>{{$.Description}}</span></h1>
         {{if .Description}}<p class="tag-description">{{.Description}}</p>{{end}}
+        {{if $.IsAdmin}}<p class="tag-also"><a href="/admin/tags/{{.Slug}}">edit this tag</a></p>{{end}}
         {{if .AlsoUnder}}<p class="tag-also">Also under {{range $i, $p := .AlsoUnder}}{{if $i}}, {{end}}<a href="/t/{{$p.Slug}}">{{$p.Display}}</a>{{end}}</p>{{end}}
         {{if .Children}}
         <ul class="subtags">

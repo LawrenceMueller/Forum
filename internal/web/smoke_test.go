@@ -93,6 +93,16 @@ func TestSmokeEveryPage(t *testing.T) {
 		// The admin's views, including what only the admin sees.
 		{p, boss, 200, "page"},
 		{"/p/" + removed.PublicID, boss, 200, "page"},
+		{"/account", boss, 200, "page"},
+		{"/admin/tags", boss, 200, "page"},
+		{"/admin/tags?q=bread", boss, 200, "page"},
+		{"/admin/tags/bread", boss, 200, "page"},
+		{"/admin/tags/question", boss, 200, "page"}, // a format: no parents section
+		{"/admin/tags/food", boss, 303, "other"},    // an old name: to food-and-drink's page
+
+		// Admin pages don't exist for anyone else.
+		{"/admin/tags", reader, 404, "other"},
+		{"/admin/tags", nil, 404, "other"},
 
 		// Logged out visitors are sent to log in.
 		{"/submit", nil, 303, "other"},

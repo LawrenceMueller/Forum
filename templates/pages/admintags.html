@@ -1,0 +1,108 @@
+{{/*
+  admintags.html: every tag, for the admin. A filter, warnings about
+  misleading names, the "new tag" form, then the whole tree with links to
+  each tag's own admin page.
+*/}}
+{{define "content"}}
+<main class="admin-tags">
+  <h1 class="page-title">Tags <span class="admin-badge">admin</span></h1>
+
+  {{if .Notice}}<div class="note" role="status"><p>{{.Notice}}</p></div>{{end}}
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  {{if .Problems}}
+  <section class="panel panel-warning">
+    <h2>Worth fixing</h2>
+    <ul>{{range .Problems}}<li>{{.}}</li>{{end}}</ul>
+  </section>
+  {{end}}
+
+  <form class="admin-filter" method="get" action="/admin/tags">
+    <label for="q">Find a tag</label>
+    <input id="q" name="q" type="search" value="{{.Query}}" autocapitalize="none" spellcheck="false"
+           placeholder="name, slug or alias">
+    <button class="button" type="submit">Find</button>
+  </form>
+  {{if .Query}}
+  <section class="panel">
+    <h2>Matching “{{.Query}}”</h2>
+    {{if .Matches}}
+    <ul class="admin-matches">
+      {{range .Matches}}<li><a href="/admin/tags/{{.Slug}}">{{.Display}}</a> <code>{{.Slug}}</code>
+        <span>{{.Facet}}{{if .Where}}, in {{.Where}}{{end}}</span></li>
+      {{end}}
+    </ul>
+    {{else}}<p>Nothing matches.</p>{{end}}
+  </section>
+  {{end}}
+
+  <section class="panel">
+    <h2>New tag</h2>
+    <form class="form" method="post" action="/admin/tags">
+      {{template "formguard" .FormToken}}
+      <div class="admin-grid">
+        <div class="field">
+          <label for="display">Display name</label>
+          <input id="display" name="display" type="text" value="{{.New.Display}}" required maxlength="60">
+        </div>
+        <div class="field">
+          <label for="slug">Slug <span class="optional">empty: made from the name</span></label>
+          <input id="slug" name="slug" type="text" value="{{.New.Slug}}" maxlength="40"
+                 autocapitalize="none" spellcheck="false" placeholder="home-networking">
+        </div>
+        <div class="field">
+          <label for="facet">Kind</label>
+          <select id="facet" name="facet">
+            <option value="topic"{{if eq .New.Facet "topic"}} selected{{end}}>topic</option>
+            <option value="format"{{if eq .New.Facet "format"}} selected{{end}}>format</option>
+            <option value="level"{{if eq .New.Facet "level"}} selected{{end}}>level</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="parents">Parents <span class="optional">topics only; comma-separated</span></label>
+          <input id="parents" name="parents" type="text" value="{{.New.Parents}}" maxlength="300"
+                 autocapitalize="none" spellcheck="false" placeholder="e.g. bread">
+        </div>
+      </div>
+      <div class="field">
+        <label for="description">Description <span class="optional">one line</span></label>
+        <input id="description" name="description" type="text" value="{{.New.Description}}" maxlength="200">
+      </div>
+      <p class="hint">Give it a second parent only if <em>every</em> post with this tag belongs under both.
+        No parents makes a new top-level topic.</p>
+      <button class="button" type="submit">Create</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Topics</h2>
+    <p class="hint">Numbers are visible posts, everything below included. A tag with two parents shows under both.</p>
+    <div class="admin-tree">
+      {{range .Topics}}
+      <details>
+        <summary><a href="/admin/tags/{{.Slug}}">{{.Display}}</a> <span>{{.Count | commas}}</span></summary>
+        {{if .Children}}<ul>{{range .Children}}{{template "admintagnode" .}}{{end}}</ul>{{end}}
+      </details>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Formats and levels</h2>
+    <ul class="admin-flat">
+      {{range .Formats}}<li><a href="/admin/tags/{{.Slug}}">{{.Display}}</a> <span>format, {{.Count | commas}}</span></li>{{end}}
+      {{range .Levels}}<li><a href="/admin/tags/{{.Slug}}">{{.Display}}</a> <span>level, {{.Count | commas}}</span></li>{{end}}
+    </ul>
+  </section>
+</main>
+{{end}}
+
+{{define "admintagnode"}}
+<li><a href="/admin/tags/{{.Slug}}">{{.Display}}</a> <span>{{.Count | commas}}</span>
+  {{if .Children}}<ul>{{range .Children}}{{template "admintagnode" .}}{{end}}</ul>{{end}}</li>
+{{end}}

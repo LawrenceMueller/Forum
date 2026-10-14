@@ -18,12 +18,22 @@ import (
 )
 
 // loadTags reads the tag system from the database and swaps it in. It runs
-// at startup, and should run again whenever tags change (the admin tag page).
+// at startup, and again after every change on the admin tag page.
 func (s *Server) loadTags(ctx context.Context) error {
 	data, err := s.store.LoadTags(ctx)
 	if err != nil {
 		return err
 	}
+	tree, err := tagTreeFrom(data)
+	if err != nil {
+		return err
+	}
+	s.tagTree.Store(tree)
+	return nil
+}
+
+// tagTreeFrom turns the database's rows into a tags.Tree.
+func tagTreeFrom(data store.TagData) (*tags.Tree, error) {
 	list := make([]tags.Tag, len(data.Tags))
 	for i, t := range data.Tags {
 		list[i] = tags.Tag{ID: t.ID, Slug: t.Name, Display: t.Display, Description: t.Description, Facet: tags.Facet(t.Facet)}
@@ -36,12 +46,7 @@ func (s *Server) loadTags(ctx context.Context) error {
 	for i, a := range data.Aliases {
 		aliases[i] = tags.Alias{Tag: a.Tag, Text: a.Alias}
 	}
-	tree, err := tags.New(list, edges, aliases)
-	if err != nil {
-		return err
-	}
-	s.tagTree.Store(tree)
-	return nil
+	return tags.New(list, edges, aliases)
 }
 
 // tree is the current tag tree. Requests take it once and use that copy
@@ -254,6 +259,7 @@ func selectionFrom(r *http.Request) tags.Selection {
 
 // tagHeader is the top of a tag page: where the tag sits and what's below it.
 type tagHeader struct {
+	Slug        string
 	Display     string
 	Description string
 	Facet       string
@@ -292,6 +298,7 @@ func (s *Server) handleTag(w http.ResponseWriter, r *http.Request) {
 	base := "/t/" + tag.Slug
 	only := r.URL.Query().Get("only") == "1"
 	header := &tagHeader{
+		Slug:        tag.Slug,
 		Display:     tag.Display,
 		Description: tag.Description,
 		Facet:       string(tag.Facet),

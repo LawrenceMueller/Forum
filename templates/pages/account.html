@@ -23,6 +23,13 @@
     <p><a class="button" href="/account/history">Your history</a></p>
   </section>
 
+  {{if .IsAdmin}}
+  <section class="panel">
+    <h2>Admin</h2>
+    <p><a class="button" href="/admin/tags">Tags</a></p>
+  </section>
+  {{end}}
+
   <section class="panel">
     <h2>Recovery codes</h2>
     {{if eq .RecoveryCodes 0}}

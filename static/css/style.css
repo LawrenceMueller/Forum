@@ -1230,3 +1230,74 @@ a.domain:hover { color: var(--ink); }
 /* pages that start with their own padding don't need a double gap */
 .upnav + .narrow,
 .upnav + .thread { padding-top: 0.75rem; }
+
+/* ---------- admin tag pages ---------- */
+
+.admin-tags { padding: 1.5rem 1rem 2rem; }
+.admin-badge {
+  margin-left: 0.4rem;
+  padding: 0 0.35em;
+  font-family: Verdana, Geneva, Tahoma, sans-serif;
+  font-size: 0.55em;
+  font-weight: normal;
+  vertical-align: middle;
+  color: var(--ink);
+  background: var(--sled);
+}
+.panel-warning h2 { color: #8a5a00; border-bottom-color: var(--sled); }
+.panel-warning ul { margin: 0; padding-left: 1.2rem; }
+
+.admin-filter,
+.admin-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  margin: 0 0 1rem;
+}
+.admin-filter label,
+.admin-inline label { font-weight: bold; }
+.admin-filter input,
+.admin-inline input[type="text"] {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  border: 1px solid var(--rule);
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0 1.5rem;
+}
+
+.admin-matches,
+.admin-flat,
+.admin-list { margin: 0 0 0.8rem; padding: 0; list-style: none; }
+.admin-matches li,
+.admin-list li { padding: 0.25rem 0; border-bottom: 1px dotted var(--rule); }
+.admin-matches span,
+.admin-flat span { color: var(--muted); font-size: 0.85em; }
+.admin-list .inline-form { margin-left: 0.6rem; font-size: 0.85em; }
+.admin-flat { display: flex; flex-wrap: wrap; gap: 0.3rem 1.2rem; }
+
+/* the whole topic tree: one collapsible box per top-level topic */
+.admin-tree details { border-bottom: 1px solid var(--rule); }
+.admin-tree summary { padding: 0.3rem 0; cursor: pointer; font-weight: bold; }
+.admin-tree summary span,
+.admin-tree li span { color: var(--muted); font-size: 0.85em; font-weight: normal; }
+.admin-tree ul { margin: 0 0 0.4rem; padding-left: 1.2rem; }
+.admin-tree li { padding: 0.1rem 0; }
+
+.admin-tag h3 { margin: 1rem 0 0.3rem; font-size: 1rem; }
+.form .ack-like {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  font-weight: normal;
+  cursor: pointer;
+}
+.ack-like input { flex: none; width: 1rem; height: 1rem; margin: 0.15rem 0 0; accent-color: var(--link); }
+.form-danger .ack { margin: 0 0 1rem; }

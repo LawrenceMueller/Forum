@@ -146,6 +146,16 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /tags/pick", s.limit(s.limits.suggest, noStore(s.handleTopicPick)))
 	mux.HandleFunc("GET /robots.txt", robotsTxt)
 
+	// The admin tag page (tagadmin.go): admins only, a 404 for everyone else.
+	mux.Handle("GET /admin/tags", noStore(s.adminOnly(s.handleAdminTags)))
+	mux.Handle("POST /admin/tags", noStore(s.adminOnly(s.handleAdminCreateTag)))
+	mux.Handle("GET /admin/tags/{tag}", noStore(s.adminOnly(s.handleAdminTag)))
+	mux.Handle("POST /admin/tags/{tag}/details", noStore(s.adminOnly(s.handleAdminTagDetails)))
+	mux.Handle("POST /admin/tags/{tag}/parents", noStore(s.adminOnly(s.handleAdminTagParents)))
+	mux.Handle("POST /admin/tags/{tag}/aliases", noStore(s.adminOnly(s.handleAdminTagAliases)))
+	mux.Handle("POST /admin/tags/{tag}/merge", noStore(s.adminOnly(s.handleAdminTagMerge)))
+	mux.Handle("POST /admin/tags/{tag}/delete", noStore(s.adminOnly(s.handleAdminTagDelete)))
+
 	// Account pages are never cached (see noStore in headers.go), and the
 	// ones that cost real work are rate limited (see ratelimit.go).
 	lim := s.limits

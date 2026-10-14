@@ -147,7 +147,8 @@ if ($Fuzz) {
         @('FuzzPasswordProblems', './internal/auth'),
         @('FuzzSafeBack',         './internal/web'),
         @('FuzzParseCursor',      './internal/store'),
-        @('FuzzRender',           './internal/markdown')
+        @('FuzzRender',           './internal/markdown'),
+        @('FuzzTopicsBox',        './internal/tags')
     )
     foreach ($t in $targets) {
         $target, $pkg = $t

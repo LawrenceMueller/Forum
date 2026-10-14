@@ -14,7 +14,7 @@ import (
 //	cycling > bike-racing < sports
 //	sports > soccer, american-football   ("football" means both)
 //	formats: question, news; levels: beginner
-func sample(t *testing.T) *Tree {
+func sample(t testing.TB) *Tree {
 	t.Helper()
 	list := []Tag{
 		{ID: 1, Slug: "food-and-drink", Display: "Food & drink", Facet: Topic},

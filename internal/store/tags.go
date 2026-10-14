@@ -35,9 +35,17 @@ type TagData struct {
 	Aliases []TagAlias
 }
 
+// querier is what reading needs, which both the pool and a transaction
+// have: the admin's changes read the tree back inside their transaction.
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
 // Tags returns every tag, by slug.
-func (s *Store) Tags(ctx context.Context) ([]Tag, error) {
-	rows, err := s.db.Query(ctx,
+func (s *Store) Tags(ctx context.Context) ([]Tag, error) { return readTags(ctx, s.db) }
+
+func readTags(ctx context.Context, q querier) ([]Tag, error) {
+	rows, err := q.Query(ctx,
 		`SELECT id, name, display_name, description, facet FROM tags ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -52,13 +60,15 @@ func (s *Store) Tags(ctx context.Context) ([]Tag, error) {
 
 // LoadTags reads the whole tag system. It's a few hundred small rows, read
 // at startup (and after the admin changes a tag), then kept in memory.
-func (s *Store) LoadTags(ctx context.Context) (TagData, error) {
+func (s *Store) LoadTags(ctx context.Context) (TagData, error) { return readTagData(ctx, s.db) }
+
+func readTagData(ctx context.Context, q querier) (TagData, error) {
 	var d TagData
 	var err error
-	if d.Tags, err = s.Tags(ctx); err != nil {
+	if d.Tags, err = readTags(ctx, q); err != nil {
 		return d, err
 	}
-	rows, err := s.db.Query(ctx, `SELECT tag_id, parent_id FROM tag_parents ORDER BY tag_id, parent_id`)
+	rows, err := q.Query(ctx, `SELECT tag_id, parent_id FROM tag_parents ORDER BY tag_id, parent_id`)
 	if err != nil {
 		return d, err
 	}
@@ -69,7 +79,7 @@ func (s *Store) LoadTags(ctx context.Context) (TagData, error) {
 	}); err != nil {
 		return d, err
 	}
-	rows, err = s.db.Query(ctx, `SELECT tag_id, alias FROM tag_aliases ORDER BY tag_id, alias`)
+	rows, err = q.Query(ctx, `SELECT tag_id, alias FROM tag_aliases ORDER BY tag_id, alias`)
 	if err != nil {
 		return d, err
 	}

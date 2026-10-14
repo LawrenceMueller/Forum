@@ -27,3 +27,6 @@ Then open http://localhost:8080. Run the tests with `go test ./...`.
 docker compose exec db psql -U snowball
 
 pink-wandering-firefly
+
+Unblock-File .\scripts\check.ps1
+.\scripts\check.ps1 -Skip staticcheck

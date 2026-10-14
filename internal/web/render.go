@@ -24,6 +24,7 @@ type basePage struct {
 	Title       string
 	Tagline     string
 	User        string // empty means logged out
+	IsAdmin     bool   // shows admin links (the pages themselves check again)
 	HideAccount bool   // true on sign up / log in, where the links would be redundant
 	Generated   time.Duration
 
@@ -49,6 +50,7 @@ func newBasePage(r *http.Request, title string) basePage {
 	}
 	if u, ok := userFrom(r.Context()); ok {
 		b.User = u.Username
+		b.IsAdmin = u.IsAdmin
 	}
 	return b
 }
