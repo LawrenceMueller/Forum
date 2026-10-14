@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"snowball/internal/auth"
+	"snowball/internal/markdown"
 	"snowball/internal/store"
 	"snowball/internal/tags"
 )
@@ -39,6 +40,7 @@ type Server struct {
 	logins     *loginGuard
 	stats      siteStats
 	tagTree    atomic.Pointer[tags.Tree] // the tag system, in memory (tags.go)
+	bodies     *markdown.Cache           // rendered post and comment texts
 }
 
 // rateLimits are per visitor (per IP). The numbers are "one token refills
@@ -103,6 +105,7 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 		voters:     voters,
 		trustProxy: cfg.TrustProxy,
 		limits:     newRateLimits(),
+		bodies:     markdown.NewCache(10000), // ~10-20k comments: a few busy threads' worth
 		logins:     newLoginGuard(),
 	}
 

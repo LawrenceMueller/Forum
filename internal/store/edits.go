@@ -79,6 +79,9 @@ func (s *Store) EditPost(ctx context.Context, publicID string, authorID int64, t
 			return err
 		}
 	}
+	if err := refreshTagPosts(ctx, tx, []int64{postID}); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 

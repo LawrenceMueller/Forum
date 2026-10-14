@@ -201,3 +201,63 @@ func TestDeleteTagOnlyWhenUnused(t *testing.T) {
 		t.Errorf("TagPostRows = %d, want 1", n)
 	}
 }
+
+// expectTagPostsInStep checks tag_posts against post_tags and the tree.
+func expectTagPostsInStep(t *testing.T, st *Store, when string) {
+	t.Helper()
+	n, err := st.TagPostsMismatches(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("%s: tag_posts is out of step by %d rows", when, n)
+	}
+}
+
+func TestTagPostsFollowPostsAndTheTree(t *testing.T) {
+	st := freshDB(t)
+	testTags(t, st)
+	me := mustUser(t, st, "blue-humming-otter")
+	bread, sports := mustTag(t, st, "bread"), mustTag(t, st, "sports")
+
+	// Posting and editing keep each post's rows right.
+	pid, err := st.CreatePost(ctx, NewPost{AuthorID: me, Title: "Loaf", TagIDs: []int{mustTag(t, st, "sourdough")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectTagPostsInStep(t, st, "after posting")
+	if n := count(t, st, `SELECT count(*) FROM tag_posts tp JOIN posts p ON p.id = tp.post_id WHERE p.public_id = $1`, pid); n != 4 {
+		t.Errorf("a sourdough post should be under 4 tags (sourdough, bread, baking, food), is under %d", n)
+	}
+	if err := st.EditPost(ctx, pid, me, "Loaf", "", "", []int{bread, mustTag(t, st, "question")}); err != nil {
+		t.Fatal(err)
+	}
+	expectTagPostsInStep(t, st, "after editing the tags")
+
+	// Moving a tag in the tree moves its posts' rows along.
+	thing := mustCreateTag(t, st, "zz-test-thing", bread)
+	child := mustCreateTag(t, st, "zz-test-thing-child", thing)
+	tagged, err := st.CreatePost(ctx, NewPost{AuthorID: me, Title: "Under the child", TagIDs: []int{child}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddTagParent(ctx, thing, sports, nil); err != nil {
+		t.Fatal(err)
+	}
+	expectTagPostsInStep(t, st, "after adding a parent")
+	if err := st.RemoveTagParent(ctx, thing, bread, nil); err != nil {
+		t.Fatal(err)
+	}
+	expectTagPostsInStep(t, st, "after removing a parent")
+	if n := count(t, st, `SELECT count(*) FROM tag_posts tp JOIN posts p ON p.id = tp.post_id
+		WHERE p.public_id = $1 AND tp.tag_id = $2`, tagged, bread); n != 0 {
+		t.Error("the post still lists under bread after its tag left bread")
+	}
+
+	// Merging moves the posts and the children's posts.
+	other := mustCreateTag(t, st, "zz-test-other", bread)
+	if err := st.MergeTag(ctx, thing, other, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	expectTagPostsInStep(t, st, "after merging")
+}

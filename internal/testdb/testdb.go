@@ -40,7 +40,7 @@ func Prepare(name string) (string, error) {
 }
 
 // Tables is every table a test may write to. Emptying these resets the
-// database; the tag tables (tags, tag_parents, tag_aliases, tag_closure)
+// database; the tag tree's tables (tags, tag_parents, tag_aliases, tag_closure)
 // hold the starter tree from the migrations and are deliberately left alone.
-const Tables = `users, sessions, recovery_codes, posts, post_tags,
+const Tables = `users, sessions, recovery_codes, posts, post_tags, tag_posts,
 	comments, post_votes, comment_votes`

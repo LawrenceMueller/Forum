@@ -2,7 +2,7 @@
 
 This document is the single place to understand Snowball: what it is, how it is built, what exists today and where it lives in the code, and what is planned. Someone who has never seen the project should be able to read it top to bottom and start working on tickets.
 
-Last updated: after the admin tag page (tags v2 Phase 1 part B, finishing Phase 1: create, rename, re-parent, aliases, merge and delete tags from the site; section 7.11), with migration 00011 (the misleading `.net` alias), a health test on the real tree and a type-ahead fuzz target. Before that: the topic type-ahead (section 7.10), which followed tags v2 Phase 1 part A (the tag tree in the database, typed topics with formats and levels, tag pages that include everything below, cached counts; section 11.1), the tag system v2 design, the upvoted and downvoted history views, the seed program (`cmd/seed`, a realistic made-up site for browsing and for measuring queries) and the testing chapter (database, request-level, smoke, fuzz, concurrency and migration tests; staticcheck and govulncheck; CI; the one-command check script), which followed posting slices five and six and the "up" navigation links. Next up: a performance pass, then moderation; images wait for moderation (section 11.2).
+Last updated: after the performance pass (section 10, "Performance": `cmd/bench`, the `tag_posts` table in migration 00012, a cache for rendered comments), which followed the admin tag page (tags v2 Phase 1 part B, finishing Phase 1: create, rename, re-parent, aliases, merge and delete tags from the site; section 7.11), with migration 00011 (the misleading `.net` alias), a health test on the real tree and a type-ahead fuzz target. Before that: the topic type-ahead (section 7.10), which followed tags v2 Phase 1 part A (the tag tree in the database, typed topics with formats and levels, tag pages that include everything below, cached counts; section 11.1), the tag system v2 design, the upvoted and downvoted history views, the seed program (`cmd/seed`, a realistic made-up site for browsing and for measuring queries) and the testing chapter (database, request-level, smoke, fuzz, concurrency and migration tests; staticcheck and govulncheck; CI; the one-command check script), which followed posting slices five and six and the "up" navigation links. Next up: moderation; images wait for moderation (section 11.2).
 
 ---
 
@@ -79,6 +79,7 @@ New clone: `cp .env.example .env` (it holds development values only).
 | Stop Postgres | `docker compose down` |
 | Wipe the database completely | `docker compose down -v` (destroys all data) |
 | Fill `snowball_dev` with a made-up site | `go run ./cmd/seed` (or `-size large`; see "Seeded data" below) |
+| Time every page (server running against `snowball_dev`) | `go run ./cmd/bench` (add `-load 30s -c 50` for a load test; section 10, "Performance") |
 
 Before every commit: `go fmt ./...`, then `.\scripts\check.ps1`, then `git status` to check `.env` is not staged and new migrations are.
 
@@ -156,6 +157,7 @@ All rate limits live in memory, so restarting the server resets them. When test 
 snowball/
   cmd/snowball/main.go      Wiring only: config, DB, server, timeouts, shutdown, session cleanup loop.
   cmd/seed/                 Development tool: fills snowball_dev with a made-up site (section 3, "Seeded data").
+  cmd/bench/                Development tool: times every kind of page against a running server, plus a load test (section 10, "Performance").
     main.go                 Flags, the *_dev safety check, then build, write, VACUUM ANALYZE, verify.
     generate.go             The made-up world: accounts, posts, threads, votes, fixtures.
     text.go                 Titles, bodies, comments from templates and word lists; layout-testing oddities.
@@ -184,6 +186,7 @@ snowball/
       posts.go              Creating posts (random public IDs), loading one post, admin removal.
       tags.go               Tag rows (tags, parents, aliases) for building the tree; tag post counts.
       tagadmin.go           Changing the tag tree (create, rename, parents, aliases, merge, delete), checked and closure-rebuilt in one transaction.
+      tagposts.go           Keeping tag_posts (every post under every tag it shows up under) in step.
       lists.go              Post lists with keyset pagination (new, active, top, hot), tag filters, post count.
       comments.go           Loading a post's comments, creating comments, admin removal.
       votes.go              Voting (toggle logic, counts), the viewer's votes, vote state, author lookup.
@@ -442,6 +445,7 @@ Email, IP addresses, user agents, device names, locations, last-login time, logi
 | 00008_create_votes.sql | `posts.upvotes/downvotes`, `score_matches_votes`, `post_votes`, `comment_votes`. |
 | 00010_tags_v2.sql | Tags v2: `display_name`, `description`, `facet`; `tag_parents`, `tag_aliases`, `tag_closure`; the starter tree (generated from the reviewed tree file); old tags renamed in place so their posts follow (`food`, `tech`, `diy`, `ask`, `show`). Its Down removes the new tags and restores the old ten. |
 | 00011_drop_dotnet_alias.sql | Removes C#'s alias `.net`: matching ignores punctuation, so it really meant "net" and caught people meaning networking. The admin page now refuses such aliases (`tags.AliasProblem`). |
+| 00012_tag_posts.sql | `tag_posts (tag_id, post_id, created_at, direct)`: every post under every tag it shows up under, filled from `post_tags` and `tag_closure`; indexes in tag-page order (and a partial one for "this tag only"). Derived data, kept in step by store/tagposts.go. |
 | 00009_erase_deleted_content.sql | `deleted_post_is_erased`; comment body may be empty only when deleted; `deleted_comment_is_erased`. |
 
 ### Query conventions
@@ -772,7 +776,7 @@ The race detector needs cgo and so a C compiler; the script asks `go env CGO_ENA
 
 Database tests need Postgres running (`docker compose up -d`). Each package uses its own database so packages can run in parallel without emptying each other's tables: `snowball_test` (store), `snowball_web_test` (web), `snowball_migrations_test` (the round trip, which never holds data, since some Down sections refuse to run when certain data exists). `testdb.Prepare` refuses any name not ending in `_test`, as a safety catch, then has `dbsetup.Ensure` create the database if missing and migrate it up. The server and credentials come from `SNOWBALL_TEST_DATABASE_URL`, defaulting to the compose development values (`testdb.DefaultURL`); CI sets it for its Postgres service.
 
-Each test starts from empty tables: `freshDB` (store) and `newSite` (web, which also builds a new server, so rate limits start untouched) run `TRUNCATE ... RESTART IDENTITY CASCADE` over `testdb.Tables` (every table except the tag tables, which keep the starter tree from the migrations). **When a migration adds a table, add it to `testdb.Tables`.** Tests in one package therefore run one at a time (no `t.Parallel()`).
+Each test starts from empty tables: `freshDB` (store) and `newSite` (web, which also builds a new server, so rate limits start untouched) run `TRUNCATE ... RESTART IDENTITY CASCADE` over `testdb.Tables` (every table except the tag tree's: `tags`, `tag_parents`, `tag_aliases` and `tag_closure` keep the starter tree from the migrations, so tests that change tags make their own, with slugs starting `zz-test-`, and delete them afterwards). **When a migration adds a table, add it to `testdb.Tables`.** Tests in one package therefore run one at a time (no `t.Parallel()`).
 
 `go test -short ./...` skips everything that needs Postgres. Each package's `TestMain` prepares its database once, and fails with a hint ("is Postgres running?") when it can't.
 
@@ -810,8 +814,8 @@ The concurrency tests cover: one voter's rapid clicks on one arrow (must all suc
 ### What's covered
 
 - `auth`: hashing and verification, damaged and unsafe hashes, normalization, password rules, the hashing semaphore, form tokens, voter fingerprints and the vote secret's minimum length.
-- `markdown`: allowed formatting, dangerous input blocked, links `nofollow`, headings flattened to text.
-- `store`: usernames unique forever and well-formed, credentials, sessions, logout everywhere, password change, recovery codes spent exactly once, account deletion (with and without content, including vote unlinking), posts and their database-enforced limits, lists hiding removed and deleted posts, pagination that never skips or repeats, comments and their rules, vote toggling and rules, comment votes and "my votes", vote tables staying private, edit windows and grace, deletion erasing content but keeping threads, history, the voted history views (what's included, and paging posts and comments together without skips or repeats), the database refusing broken data, cursor parsing, and the concurrency cases above; changing tags: creating one builds its closure rows, a check that objects rolls everything back, parents and aliases added and removed, renaming with old names kept, merging (posts, children, names), deleting only unused tags.
+- `markdown`: allowed formatting, dangerous input blocked, links `nofollow`, headings flattened to text; the render cache (same output as rendering, bounded, safe to share between requests).
+- `store`: usernames unique forever and well-formed, credentials, sessions, logout everywhere, password change, recovery codes spent exactly once, account deletion (with and without content, including vote unlinking), posts and their database-enforced limits, lists hiding removed and deleted posts, pagination that never skips or repeats, comments and their rules, vote toggling and rules, comment votes and "my votes", vote tables staying private, edit windows and grace, deletion erasing content but keeping threads, history, the voted history views (what's included, and paging posts and comments together without skips or repeats), the database refusing broken data, cursor parsing, and the concurrency cases above; changing tags: creating one builds its closure rows, a check that objects rolls everything back, parents and aliases added and removed, renaming with old names kept, merging (posts, children, names), deleting only unused tags; `tag_posts` staying in step through posting, editing, re-parenting and merging.
 - `tags`: normalizing names, ancestors and paths (including two parents), loops refused, lookups (aliases, ambiguity), choosing a post's tags (forgiving spelling, implied ancestors, limits, wrong facets, tampered values), chips and the edit round trip; the type-ahead pieces (splitting the box, ranking, picking; fuzzed by `FuzzTopicsBox`); slug, display name and alias rules, `Slugify`, and `Tree.Check` finding each kind of misleading name.
 - `web`: client IPs, limiters (burst, forgetting, status), the login guard, durations, post validation, number formatting, Wilson scores, comment trees and depth rules, safe return paths, vote widget rules, the edit window, history snippets; and through whole requests: login (including bot checks), logout everywhere, sign-up (including a forged name), logged-out redirects, cross-site refusal, nobody editing or deleting others' work, admin endpoints hidden from everyone else, submitting, commenting and replying, voting, the upvoted and downvoted views (private to the voter, unvoting removes an item), tag pages including everything below and the "this tag only" switch, old names and aliases redirecting, ambiguous names, the tag index and sidebar counts, typed topics on submit (unknown, ambiguous, forgiving spelling) and the edit page's tag round trip, topic suggestions (ranking, shared aliases, settled topics and their ancestors left out, three-topic cap, no match, length cap) and picks (what the box ends up holding posts cleanly; formats and unknown slugs refused); the real starter tree's health (no misleading names, every alias leads home, `tag_closure` matching the parent links); the admin tag page (a 404 and no links for non-admins; creating, renaming with old links still arriving, re-parenting and aliases live at once, including in the type-ahead; each refusal with its message and nothing changed; merging and deleting); plus the smoke tests of every page and fragment.
 - `testdb`: the migration round trip.
@@ -823,6 +827,34 @@ Not covered yet: a red-team bot attacking the defenses from outside, load testin
 Go 1.27.2 writes export data that staticcheck 2026.2.1 (v0.8.1) can't read ("export data version 5 is greater than maximum supported version 4"; dominikh/go-tools issue #1832). A fix was announced for release on 9 October 2026. Until it ships, run `.\scripts\check.ps1 -Skip staticcheck` locally, and expect CI's staticcheck section to fail; once a fixed release is out, `@latest` picks it up automatically and the failed CI run can be re-run. Remove this note then.
 
 ---
+
+### Performance
+
+**How to measure.** Seed the large site (`go run ./cmd/seed -size large`: 20,000 accounts, 100,000 posts, 1.2 million comments, 5.8 million votes, about 2 GB), start Snowball against `snowball_dev`, and run `go run ./cmd/bench`. It picks real examples from the database (the busiest thread, a busy account, the widest and narrowest tags, page 30 of `/new`), logs in through the real form as a seeded account and as the admin, and requests each page 15 times, printing median, p95, slowest and size. `-load 30s -c 50` then has 50 logged-out visitors browse at once. Run it before and after a change; compare runs on the same machine, not with production.
+
+**Finding a slow query.** Postgres can log every statement over a threshold: `ALTER SYSTEM SET log_min_duration_statement = 10; SELECT pg_reload_conf();` (as the database owner), then read the log (`docker compose logs db`). Paste the query into `EXPLAIN (ANALYZE, BUFFERS) ...` to see the plan and where time goes. If no query is slow but the page is, the time is in Go: profile with `net/http/pprof`.
+
+**The pass (October 2026), large seed, median times on the development machine:**
+
+| Page | Before | After | What changed |
+|---|---|---|---|
+| `/t/question` (a format on 25% of posts) | 92 ms | 3 ms | `tag_posts` (below) |
+| A narrow tag (`/t/lgbtq`) | 10 ms | 5 ms | `tag_posts` |
+| Tag counts (background, once a minute) | 245 ms | 96 ms | counted from `tag_posts` |
+| Biggest thread (2,400 comments), logged out | 92 ms | 61 ms | rendered-comment cache |
+| Biggest thread, logged in | 153 ms | 96 ms | rendered-comment cache |
+| Everything else (lists, posts, tags, history, admin) | 0.5 to 10 ms | about the same | already fine |
+
+Load test, 50 visitors at once for 20 seconds, with server, Postgres and load generator sharing 2 CPU cores: about 710 pages a second, median 73 ms (mostly queueing), p99 141 ms, no failures.
+
+**What was slow, and why.**
+
+- *Tag pages for big tags.* Listing "newest posts under X" started from `post_tags` and `tag_closure`, gathered every matching post (25,000 for Question), then sorted them all to show 30. Postgres can't know in advance how many posts a tag has (it plans for an average one), so it picked that plan for every tag. Fix: `tag_posts` (migration 00012) lists every post under every tag it shows up under, with the post's time, indexed in page order; a tag page reads 31 index entries and stops, however big the site gets. It's derived data, kept in step in the same transaction as whatever changes it: `CreatePost` and `EditPost` rebuild the post's rows; tree changes on the admin page rebuild the rows of every post under the tag that moved (worst case, moving all of Food & drink: about 0.7 s, admin-only). `TagPostsMismatches` (tests) and the seed program's checks compare it with `post_tags` and the tree.
+- *Huge threads.* No query was slow; profiling showed Go's time split between rendering Markdown (40%) and executing templates for 2,400 comments (50%). Fix: `markdown.Cache`, a bounded two-generation memo of `Render`, keyed by the comment's text (an edit changes the text, so nothing needs invalidating; about 20,000 texts at most). The rest is template work proportional to the page: 1.9 MB of HTML logged out, 3.3 MB logged in (each comment's vote form). The real remedy is comment paging (backlog, 11.5); compression (below) makes the transfer about 12 times smaller meanwhile.
+
+**Known and fine for now.** The voted-history views read all of an account's votes of that direction, then sort: 21 ms for a busy account, 47 ms for the busiest voter (3,600 votes); it grows with one account's votes, not the site. A query that has to read from disk is many times slower than these warm numbers (the busiest voter's history took 3 s cold): production needs enough memory for Postgres to keep the busy part of the database cached (section 11.4).
+
+**Compression.** Snowball sends pages uncompressed; gzip makes the biggest thread 151 KB instead of 1.9 MB. Caddy compresses in production (`encode zstd gzip`, section 11.4), so Go doesn't. (The BREACH attack on compressed HTTPS needs a secret in the page next to attacker-chosen text; Snowball's form tokens only time forms, cross-site requests are refused by origin checks, and the session lives in a cookie, never in a page.)
 
 ## 11. Roadmap and backlog
 
@@ -901,6 +933,8 @@ Anti-bot layers still to build into posting:
 
 VPS with Docker Compose running Postgres, Snowball, and Caddy (automatic HTTPS). Set `DATABASE_URL` with real credentials, **`SNOWBALL_VOTE_SECRET` (32+ random characters, stable forever, backed up separately from the database)**, and `SNOWBALL_TRUST_PROXY=1`. HSTS via Caddy. Caddy access logs off or scrubbed of IPs. Nightly `pg_dump` backups shipped off the server (without the vote secret alongside). Embed templates and static files into the binary with Go's `embed`. Versioned static URLs with long caching, replacing `revalidate`. Styled 429 and 503 pages. Optionally Anubis. Optionally a trap link for crawlers that ignore `robots.txt`. Rewrite or remove the placeholder admin note.
 
+**Performance settings (from section 10, "Performance").** Caddy: `encode zstd gzip` (pages compress about 12 times). Memory: enough for Postgres to cache the busy part of the database (`shared_buffers` about a quarter of RAM; the large seed is about 2 GB on disk); cold reads are many times slower than the benchmark numbers. Backups double as the undo for tag merges and deletes, which can't be reversed on the site. Re-run `cmd/bench` on the server itself once to see real numbers.
+
 ### 11.5 Smaller backlog items
 
 | Item | Notes |
@@ -913,10 +947,10 @@ VPS with Docker Compose running Postgres, Snowball, and Caddy (automatic HTTPS).
 | Welcome page refresh | Refreshing resubmits sign-up; consider a one-time server-side handoff. |
 | Recovery code regeneration | Deliberately deferred; the owner leans against it. |
 | Single-use form tokens | Currently reusable within 2 hours. |
-| Comment paging | Threads over 2,000 comments are truncated today. |
+| Comment paging | Threads load at most 2,000 comments today. The biggest seeded thread (2,400) takes 61 ms logged out and 96 ms logged in, nearly all template work for 2 to 3 MB of HTML; paging (Reddit shows about 200, then "more comments") would cut that and the page weight. |
 | Delete from the post page | Deleting is offered only on the history page today; a delete control beside "edit" on your own posts and comments would be a small addition. |
 | Hot ranking for more lists | Only "Popular today" uses it; a `/hot` list or tag-page option could follow. |
-| Performance pass (after tags v2 Phase 1) | Tags v2 fixed the biggest cost (sidebar counts on every page; now cached). On the large seed, list and tag pages take 4 to 12 ms, but `/t/question` (a format on a quarter of all posts) takes about 115 ms, and the background count query about 250 ms. Next: `EXPLAIN ANALYZE` the main queries, fix what's slow, and measure again. |
+| Performance follow-ups | Done: the pass in section 10, "Performance". Left: comment paging for huge threads; `/top` (7 ms) and the history views would be next if they grow. |
 | sqlc | Considered; on Windows its Postgres parser needs cgo, so run it via Docker if adopted. |
 | More testing | A red-team bot to attack the defenses from outside; load testing before launch; browser tests if the JavaScript grows. |
 | Pinned tool versions | staticcheck and govulncheck run `@latest`. If upstream surprises become a nuisance, pin them with Go's `tool` directive in go.mod (`go get -tool ...`) and run them with `go tool`. |

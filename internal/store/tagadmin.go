@@ -11,7 +11,8 @@ package store
 //     doesn't know about: the web package passes a check that builds a
 //     tags.Tree (refusing loops) and looks for misleading names.
 //  4. If the check objects, roll everything back. Otherwise rebuild
-//     tag_closure from the parent links and commit.
+//     tag_closure from the parent links, refresh tag_posts for the posts
+//     whose place in the tree moved, and commit.
 //
 // So a change that would break the tree never reaches the database, however
 // it was made, and the closure table always matches the parents it was
@@ -43,7 +44,10 @@ type TagCheck func(TagData) error
 const tagLock = 0x7461_6773 // "tags" in ASCII
 
 // changeTags runs one change: see the top of this file.
-func (s *Store) changeTags(ctx context.Context, check TagCheck, change func(tx pgx.Tx) error) error {
+//
+// under names a tag whose posts' tag_posts rows need rebuilding afterwards,
+// because the tree above them changed (0 for none).
+func (s *Store) changeTags(ctx context.Context, check TagCheck, under int, change func(tx pgx.Tx) error) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -71,6 +75,11 @@ func (s *Store) changeTags(ctx context.Context, check TagCheck, change func(tx p
 	}
 	if err := rebuildClosure(ctx, tx); err != nil {
 		return err
+	}
+	if under != 0 {
+		if err := refreshTagPostsUnder(ctx, tx, under); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }
@@ -127,7 +136,7 @@ type NewTag struct {
 // CreateTag adds a tag, returning its ID.
 func (s *Store) CreateTag(ctx context.Context, t NewTag, check TagCheck) (int, error) {
 	var id int
-	err := s.changeTags(ctx, check, func(tx pgx.Tx) error {
+	err := s.changeTags(ctx, check, 0, func(tx pgx.Tx) error {
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO tags (name, display_name, description, facet) VALUES ($1, $2, $3, $4)
 			RETURNING id`, t.Slug, t.Display, t.Description, t.Facet).Scan(&id); err != nil {
@@ -153,7 +162,7 @@ type TagDetails struct {
 
 // UpdateTag changes a tag's slug, display name and description.
 func (s *Store) UpdateTag(ctx context.Context, id int, d TagDetails, check TagCheck) error {
-	return s.changeTags(ctx, check, func(tx pgx.Tx) error {
+	return s.changeTags(ctx, check, 0, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, `UPDATE tags SET name = $2, display_name = $3, description = $4 WHERE id = $1`,
 			id, d.Slug, d.Display, d.Description)
 		if err != nil {
@@ -178,7 +187,7 @@ func addAliases(ctx context.Context, tx pgx.Tx, id int, aliases []string) error 
 
 // AddTagParent puts a tag under another one as well.
 func (s *Store) AddTagParent(ctx context.Context, id, parent int, check TagCheck) error {
-	return s.changeTags(ctx, check, func(tx pgx.Tx) error {
+	return s.changeTags(ctx, check, id, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `INSERT INTO tag_parents (tag_id, parent_id) VALUES ($1, $2)`, id, parent)
 		return err
 	})
@@ -187,7 +196,7 @@ func (s *Store) AddTagParent(ctx context.Context, id, parent int, check TagCheck
 // RemoveTagParent takes a tag out from under one of its parents. (Without
 // parents left, it becomes a top-level tag.)
 func (s *Store) RemoveTagParent(ctx context.Context, id, parent int, check TagCheck) error {
-	return s.changeTags(ctx, check, func(tx pgx.Tx) error {
+	return s.changeTags(ctx, check, id, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `DELETE FROM tag_parents WHERE tag_id = $1 AND parent_id = $2`, id, parent)
 		return err
 	})
@@ -195,7 +204,7 @@ func (s *Store) RemoveTagParent(ctx context.Context, id, parent int, check TagCh
 
 // AddTagAlias gives a tag another name.
 func (s *Store) AddTagAlias(ctx context.Context, id int, alias string, check TagCheck) error {
-	return s.changeTags(ctx, check, func(tx pgx.Tx) error {
+	return s.changeTags(ctx, check, 0, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `INSERT INTO tag_aliases (tag_id, alias) VALUES ($1, $2)`, id, alias)
 		return err
 	})
@@ -203,7 +212,7 @@ func (s *Store) AddTagAlias(ctx context.Context, id int, alias string, check Tag
 
 // RemoveTagAlias takes one of a tag's other names away.
 func (s *Store) RemoveTagAlias(ctx context.Context, id int, alias string, check TagCheck) error {
-	return s.changeTags(ctx, check, func(tx pgx.Tx) error {
+	return s.changeTags(ctx, check, 0, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `DELETE FROM tag_aliases WHERE tag_id = $1 AND alias = $2`, id, alias)
 		return err
 	})
@@ -214,7 +223,7 @@ func (s *Store) RemoveTagAlias(ctx context.Context, id int, alias string, check 
 // aliases: its slug, display name and aliases) lead to the other tag, and
 // the tag itself is deleted.
 func (s *Store) MergeTag(ctx context.Context, from, into int, aliases []string, check TagCheck) error {
-	return s.changeTags(ctx, check, func(tx pgx.Tx) error {
+	return s.changeTags(ctx, check, into, func(tx pgx.Tx) error {
 		// Posts. A post that had both keeps one row (ON CONFLICT).
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO post_tags (post_id, tag_id)
@@ -253,7 +262,7 @@ func (s *Store) MergeTag(ctx context.Context, from, into int, aliases []string, 
 // ones) and no children. Anything in use is merged instead, so its posts
 // and old links have somewhere to go.
 func (s *Store) DeleteTag(ctx context.Context, id int, check TagCheck) error {
-	return s.changeTags(ctx, check, func(tx pgx.Tx) error {
+	return s.changeTags(ctx, check, 0, func(tx pgx.Tx) error {
 		var posts, children int64
 		if err := tx.QueryRow(ctx, `
 			SELECT (SELECT count(*) FROM post_tags WHERE tag_id = $1),

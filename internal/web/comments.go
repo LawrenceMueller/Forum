@@ -97,7 +97,8 @@ type treeOptions struct {
 	rootID      int64 // build from this comment down; 0 for the whole post
 	postClosed  bool  // the post was removed or deleted: no voting on its comments
 	viewer      voteViewer
-	myVotes     map[int64]int // the viewer's votes, by comment ID
+	myVotes     map[int64]int              // the viewer's votes, by comment ID
+	render      func(string) template.HTML // Markdown to HTML: the server's cache (nil: render directly)
 }
 
 func newCommentNode(c store.Comment, o treeOptions) *commentNode {
@@ -128,7 +129,11 @@ func newCommentNode(c store.Comment, o treeOptions) *commentNode {
 	if n.hidden {
 		n.Author = "" // a hidden comment doesn't say who wrote it
 	} else {
-		n.BodyHTML = markdown.Render(c.Body)
+		render := o.render
+		if render == nil { // a single comment, outside a page's tree
+			render = markdown.Render
+		}
+		n.BodyHTML = render(c.Body)
 		if !c.AuthorDeleted {
 			n.ColorClass = colorClass(c.Author)
 		}
@@ -499,6 +504,7 @@ func (s *Server) treeOptionsFor(r *http.Request, post store.Post, sortMode strin
 		rootID:     rootID,
 		postClosed: post.Removed || post.Deleted,
 		viewer:     s.voteViewerFor(r),
+		render:     s.bodies.Render,
 	}
 	if u.IsAdmin {
 		o.removeToken = s.formToken(formRemoveComment)

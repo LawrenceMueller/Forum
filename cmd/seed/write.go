@@ -131,7 +131,7 @@ func write(ctx context.Context, conn *pgx.Conn, w *world, keys *auth.VoterKeys, 
 	defer tx.Rollback(ctx)
 
 	// Start from empty tables (the seeded tags stay) and IDs from 1.
-	if _, err := tx.Exec(ctx, `TRUNCATE users, sessions, recovery_codes, posts, post_tags,
+	if _, err := tx.Exec(ctx, `TRUNCATE users, sessions, recovery_codes, posts, post_tags, tag_posts,
 		comments, post_votes, comment_votes RESTART IDENTITY CASCADE`); err != nil {
 		return err
 	}
@@ -183,6 +183,22 @@ func write(ctx context.Context, conn *pgx.Conn, w *world, keys *auth.VoterKeys, 
 	if err != nil {
 		return err
 	}
+
+	// tag_posts lists each post under every tag it shows up under (what
+	// tag pages read); the site keeps it up to date as posts are written,
+	// so here it's filled in one go, like migration 00012 does.
+	t := time.Now()
+	tag, err := tx.Exec(ctx, `
+		INSERT INTO tag_posts (tag_id, post_id, created_at, direct)
+		SELECT c.ancestor_id, p.id, p.created_at, bool_or(c.depth = 0)
+		FROM post_tags pt
+		JOIN tag_closure c ON c.descendant_id = pt.tag_id
+		JOIN posts p ON p.id = pt.post_id
+		GROUP BY c.ancestor_id, p.id, p.created_at`)
+	if err != nil {
+		return fmt.Errorf("filling tag_posts: %w", err)
+	}
+	fmt.Printf("  %-14s %10s rows  %6.1fs\n", "tag_posts", commas(tag.RowsAffected()), time.Since(t).Seconds())
 
 	err = copyRows(ctx, tx, "comments",
 		[]string{"id", "public_id", "post_id", "parent_id", "author_id", "depth", "body",
@@ -277,6 +293,7 @@ func verify(ctx context.Context, conn *pgx.Conn) error {
 			SELECT count(*) FROM posts p
 			WHERE (SELECT count(*) FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
 			       WHERE pt.post_id = p.id AND t.facet = 'topic') NOT BETWEEN 1 AND 3`},
+		{"tag_posts matches the posts' tags and the tree", store.TagPostsMismatchesSQL},
 		{"nothing written before its author's account existed", `
 			SELECT (SELECT count(*) FROM posts p JOIN users u ON u.id = p.author_id WHERE p.created_at < u.created_at)
 			     + (SELECT count(*) FROM comments c JOIN users u ON u.id = c.author_id WHERE c.created_at < u.created_at)`},

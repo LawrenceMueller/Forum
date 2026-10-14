@@ -95,15 +95,15 @@ func readTagData(ctx context.Context, q querier) (TagData, error) {
 // everything below it too: a sourdough post counts for Sourdough, Bread,
 // Baking and Food & drink, once each. Tags with no posts are absent.
 //
-// It reads every tag link, so it's meant to run once a minute in the
-// background (see web/stats.go), never per page load.
+// It reads every row of tag_posts (which already lists each post once
+// under each tag), so it's meant to run once a minute in the background
+// (see web/stats.go), never per page load.
 func (s *Store) TagPostCounts(ctx context.Context) (map[int]int64, error) {
 	rows, err := s.db.Query(ctx, `
-		SELECT c.ancestor_id, count(DISTINCT pt.post_id)
-		FROM tag_closure c
-		JOIN post_tags pt ON pt.tag_id = c.descendant_id
-		JOIN posts p ON p.id = pt.post_id AND p.removed_at IS NULL AND p.deleted_at IS NULL
-		GROUP BY c.ancestor_id`)
+		SELECT tp.tag_id, count(*)
+		FROM tag_posts tp
+		JOIN posts p ON p.id = tp.post_id AND p.removed_at IS NULL AND p.deleted_at IS NULL
+		GROUP BY tp.tag_id`)
 	if err != nil {
 		return nil, err
 	}

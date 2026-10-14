@@ -121,6 +121,9 @@ func (s *Store) createPostWithID(ctx context.Context, p NewPost, publicID string
 			return err
 		}
 	}
+	if err := refreshTagPosts(ctx, tx, []int64{postID}); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 

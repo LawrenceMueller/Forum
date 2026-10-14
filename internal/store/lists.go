@@ -91,26 +91,31 @@ func (s *Store) ListPosts(ctx context.Context, opt ListOptions) (posts []Post, n
 
 	where = append(where, "p.removed_at IS NULL", "p.deleted_at IS NULL")
 
-	switch {
-	case opt.TagID != 0 && opt.TagOnly:
-		where = append(where, `EXISTS (
-			SELECT 1 FROM post_tags pt
-			WHERE pt.post_id = p.id AND pt.tag_id = `+arg(opt.TagID)+`)`)
-	case opt.TagID != 0:
-		// The closure table holds every (ancestor, descendant) pair, so
-		// "tagged with this tag or anything below it" is one join.
-		where = append(where, `EXISTS (
-			SELECT 1 FROM post_tags pt
-			JOIN tag_closure c ON c.descendant_id = pt.tag_id
-			WHERE pt.post_id = p.id AND c.ancestor_id = `+arg(opt.TagID)+`)`)
+	// A tag's posts come from tag_posts, which lists every post under every
+	// tag it shows up under (migration 00012). "direct" narrows it to posts
+	// carrying exactly that tag.
+	from := "posts p"
+	if opt.TagID != 0 {
+		from = "tag_posts tp JOIN posts p ON p.id = tp.post_id"
+		where = append(where, "tp.tag_id = "+arg(opt.TagID))
+		if opt.TagOnly {
+			where = append(where, "tp.direct")
+		}
 	}
 
 	// Each sort has a key column; the cursor compares against the same pair.
 	// These strings are fixed in code, never built from input.
 	var key string
+	idCol := "p.id"
 	switch opt.Sort {
 	case SortNew:
 		key = "p.created_at"
+		if opt.TagID != 0 {
+			// The same values, but named from tag_posts, so Postgres sees
+			// its index already holds them in this order and stops after
+			// one page instead of sorting every post under the tag.
+			key, idCol = "tp.created_at", "tp.post_id"
+		}
 	case SortActive:
 		key = "p.last_activity_at"
 	case SortTop:
@@ -129,7 +134,7 @@ func (s *Store) ListPosts(ctx context.Context, opt ListOptions) (posts []Post, n
 			v = time.UnixMicro(opt.After.Value)
 		}
 		// Row comparison: "(key, id) comes after the cursor" in a single test.
-		where = append(where, "("+key+", p.id) < ("+arg(v)+", "+arg(opt.After.ID)+")")
+		where = append(where, "("+key+", "+idCol+") < ("+arg(v)+", "+arg(opt.After.ID)+")")
 	}
 
 	limit := opt.Limit
@@ -144,10 +149,10 @@ func (s *Store) ListPosts(ctx context.Context, opt ListOptions) (posts []Post, n
 		       coalesce((SELECT array_agg(t.name ORDER BY t.name)
 		                 FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
 		                 WHERE pt.post_id = p.id), '{}')
-		FROM posts p
+		FROM ` + from + `
 		JOIN users u ON u.id = p.author_id
 		WHERE ` + strings.Join(where, " AND ") + `
-		ORDER BY ` + key + ` DESC, p.id DESC
+		ORDER BY ` + key + ` DESC, ` + idCol + ` DESC
 		LIMIT ` + arg(limit+1) // one extra, to learn whether another page exists
 
 	rows, err := s.db.Query(ctx, query, args...)
