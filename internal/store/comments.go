@@ -30,7 +30,8 @@ type Comment struct {
 	Downvotes     int
 	Depth         int
 	Deleted       bool
-	Removed       bool
+	Removed       bool   // by the admin, or held by reports
+	RemovalReason string // why, when removed ("" if unrecorded)
 }
 
 // maxCommentsLoaded caps how many comments one page load reads. Far above
@@ -41,13 +42,13 @@ const commentColumns = `
 	c.id, coalesce(c.parent_id, 0), c.public_id, c.post_id,
 	u.username, u.deleted_at IS NOT NULL,
 	c.body, c.created_at, c.edited_at, c.upvotes, c.downvotes, c.depth,
-	c.deleted_at IS NOT NULL, c.removed_at IS NOT NULL`
+	c.deleted_at IS NOT NULL, c.removed_at IS NOT NULL, coalesce(c.removal_reason, '')`
 
 func scanComment(row pgx.Row, c *Comment) error {
 	return row.Scan(&c.ID, &c.ParentID, &c.PublicID, &c.PostID,
 		&c.Author, &c.AuthorDeleted,
 		&c.Body, &c.CreatedAt, &c.EditedAt, &c.Upvotes, &c.Downvotes, &c.Depth,
-		&c.Deleted, &c.Removed)
+		&c.Deleted, &c.Removed, &c.RemovalReason)
 }
 
 // CommentsForPost loads every comment on a post, oldest first. The tree is
@@ -180,33 +181,4 @@ func (s *Store) createCommentOnce(ctx context.Context, c NewComment, publicID, h
 		return 0, err
 	}
 	return depth, tx.Commit(ctx)
-}
-
-// RemoveComment is the admin's removal. The row stays, so replies under it
-// keep their place in the thread; the post's visible count drops by one.
-func (s *Store) RemoveComment(ctx context.Context, publicID string) error {
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	var postID int64
-	err = tx.QueryRow(ctx, `
-		UPDATE comments SET removed_at = now()
-		WHERE public_id = $1 AND removed_at IS NULL
-		RETURNING post_id`, publicID).Scan(&postID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil // already removed, or no such comment: nothing to do
-	}
-	if err != nil {
-		return err
-	}
-
-	if _, err := tx.Exec(ctx,
-		`UPDATE posts SET comment_count = greatest(comment_count - 1, 0) WHERE id = $1`, postID,
-	); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
 }

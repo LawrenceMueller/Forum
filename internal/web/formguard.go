@@ -51,6 +51,13 @@ var (
 	// Admin actions: no minimum (a quick click is fine), but still need a token.
 	formRemovePost = formRule{"remove-post", 0, "/"}
 	formTagAdmin   = formRule{"tag-admin", 0, "/admin/tags"}
+	formModerate   = formRule{"moderate", 0, "/admin/reports"}
+
+	// Reporting a post or comment: a moment to pick a reason.
+	formReport = formRule{"report", 2 * time.Second, "/"}
+
+	// The one appeal against a suspension: worth a moment's thought.
+	formAppeal = formRule{"appeal", 5 * time.Second, "/account/suspension"}
 
 	// Votes: one click is all it takes, so no minimum, but a token is still
 	// required, so votes only come from someone who loaded the page.

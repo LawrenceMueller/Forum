@@ -26,7 +26,7 @@ func editTimeLeft(created, now time.Time) (time.Duration, bool) {
 
 // canEdit is whether the viewer may edit an item, and the time left as words.
 func canEdit(viewer voteViewer, author string, authorDeleted, gone bool, created time.Time) (bool, string) {
-	if !viewer.loggedIn || authorDeleted || gone || author == "" || author != viewer.user.Username {
+	if !viewer.loggedIn || viewer.suspended || authorDeleted || gone || author == "" || author != viewer.user.Username {
 		return false, ""
 	}
 	left, ok := editTimeLeft(created, time.Now())

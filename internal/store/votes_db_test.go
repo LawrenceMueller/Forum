@@ -65,7 +65,7 @@ func TestVoteRules(t *testing.T) {
 		t.Errorf("voting on nothing: want ErrVoteNotFound, got %v", err)
 	}
 
-	if err := st.RemovePost(ctx, post.PublicID); err != nil {
+	if err := st.Remove(ctx, Item{PostID: post.PublicID}, "spam"); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := st.Vote(ctx, VotePost, post.PublicID, "fp-voter", voter, 1); !errors.Is(err, ErrVoteLocked) {
@@ -251,7 +251,7 @@ func TestDeleteCommentCountsOnce(t *testing.T) {
 	gone := mustComment(t, st, post, me, "", "delete me")
 	removedFirst := mustComment(t, st, post, me, "", "removed, then deleted")
 
-	if err := st.RemoveComment(ctx, removedFirst); err != nil { // count 3 -> 2
+	if err := st.Remove(ctx, Item{CommentID: removedFirst}, "spam"); err != nil { // count 3 -> 2
 		t.Fatal(err)
 	}
 	if err := st.DeleteComment(ctx, gone, me); err != nil { // 2 -> 1
@@ -282,7 +282,7 @@ func TestHistory(t *testing.T) {
 	mustPost(t, st, other, "Not mine")
 	mustComment(t, st, visible, me, "", "my comment")
 
-	if err := st.RemovePost(ctx, removed.PublicID); err != nil {
+	if err := st.Remove(ctx, Item{PostID: removed.PublicID}, "spam"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DeletePost(ctx, deleted.PublicID, me); err != nil {

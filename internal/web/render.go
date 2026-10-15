@@ -23,9 +23,10 @@ var taglines = []string{
 type basePage struct {
 	Title       string
 	Tagline     string
-	User        string // empty means logged out
-	IsAdmin     bool   // shows admin links (the pages themselves check again)
-	HideAccount bool   // true on sign up / log in, where the links would be redundant
+	User        string            // empty means logged out
+	IsAdmin     bool              // shows admin links (the pages themselves check again)
+	Suspended   *suspensionBanner // the banner for a suspended account; nil otherwise
+	HideAccount bool              // true on sign up / log in, where the links would be redundant
 	Generated   time.Duration
 
 	// The "up" link at the top of the page: where this page sits in the
@@ -51,6 +52,9 @@ func newBasePage(r *http.Request, title string) basePage {
 	if u, ok := userFrom(r.Context()); ok {
 		b.User = u.Username
 		b.IsAdmin = u.IsAdmin
+		if u.Suspension != nil {
+			b.Suspended = bannerFor(u.Suspension)
+		}
 	}
 	return b
 }

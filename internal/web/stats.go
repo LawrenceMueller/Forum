@@ -16,6 +16,8 @@ import (
 type siteStats struct {
 	posts     atomic.Int64
 	tagCounts atomic.Pointer[map[int]int64] // tag ID -> visible posts at or below it
+
+	openReports atomic.Int64 // posts and comments with open reports, for the admin's header
 }
 
 func (s *Server) refreshStats() {
@@ -39,6 +41,7 @@ func (s *Server) refreshStats() {
 func (s *Server) statsLoop() {
 	for range time.Tick(time.Minute) {
 		s.refreshStats()
+		s.refreshReports()
 	}
 }
 

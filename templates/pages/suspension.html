@@ -1,0 +1,50 @@
+{{/*
+  suspension.html: why an account is suspended, until when, what it can
+  still do, and its one appeal.
+*/}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">{{if .Sus.Permanent}}Your account is banned{{else}}Your account is suspended{{end}}</h1>
+
+  <section class="panel">
+    <h2>Why</h2>
+    <p>For <strong>{{.Reason}}</strong> (see the <a href="/rules#{{.Sus.Reason}}">rules</a>).</p>
+    {{if .Sus.Note}}<blockquote class="report-quote">{{.Sus.Note}}</blockquote>{{end}}
+    <p>{{if .Sus.Permanent}}It doesn't end.{{else}}It ends on <strong>{{.Until}}</strong>, and then everything works as before.{{end}}</p>
+  </section>
+
+  <section class="panel">
+    <h2>What you can still do</h2>
+    <p>Log in, read everything, change your password, and delete your own posts and comments (from
+      <a href="/account/history">your history</a>) or your whole account. Posting, commenting, voting,
+      reporting and editing wait until the suspension ends.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Appeal</h2>
+    {{if .Sent}}
+    <div class="note" role="status"><p>Your appeal has been sent. The admin will read it.</p></div>
+    {{else if .Sus.AppealHandledAt}}
+    <p>Your appeal was read, and the suspension stands.</p>
+    {{else if .Sus.AppealedAt}}
+    <p>Your appeal has been sent and is waiting for the admin.</p>
+    {{else}}
+    {{if .Errors}}
+    <div class="errors" role="alert">
+      <p><strong>That didn't work:</strong></p>
+      <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+    </div>
+    {{end}}
+    <p>If you think this was a mistake, say so here. You get one appeal per suspension, so make it count.</p>
+    <form class="form" method="post" action="/account/suspension">
+      {{template "formguard" .FormToken}}
+      <div class="field">
+        <label for="appeal">Your appeal <span class="optional">up to 500 characters</span></label>
+        <textarea id="appeal" name="appeal" rows="5" maxlength="500" required>{{.Appeal}}</textarea>
+      </div>
+      <button class="button" type="submit">Send appeal</button>
+    </form>
+    {{end}}
+  </section>
+</main>
+{{end}}

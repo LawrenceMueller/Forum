@@ -1,0 +1,87 @@
+{{/*
+  adminreports.html: the admin's queue of reported posts and comments, most
+  urgent first (illegal content and personal information, then the most
+  reported). Each item can be dismissed or removed with a reason.
+*/}}
+{{define "content"}}
+<main class="admin-queue">
+  <h1 class="page-title">Reports <span class="admin-badge">admin</span></h1>
+
+  {{if .Notice}}<div class="note" role="status"><p>{{.Notice}}</p></div>{{end}}
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  {{if .Appeals}}
+  <h2 class="section-title">Appeals</h2>
+  {{range .Appeals}}
+  <article class="queue-item queue-appeal">
+    <header class="queue-head">
+      <span class="queue-kind">appeal</span>
+      <a href="/admin/users/{{.Username}}">{{.Username}}</a>
+    </header>
+    <p class="meta">suspended for {{.Reason}}, {{.Length}} · appealed {{.AppealedAt.Format "2006-01-02 15:04"}}</p>
+    {{if .Note}}<p class="meta">Your note: “{{.Note}}”</p>{{end}}
+    <div class="queue-text">{{.Appeal}}</div>
+    <form class="queue-actions" method="post" action="/admin/appeals">
+      {{template "formguard" $.FormToken}}
+      <input type="hidden" name="suspension" value="{{.ID}}">
+      <button class="button" type="submit" name="action" value="lift">Lift the suspension</button>
+      <button class="button" type="submit" name="action" value="keep">Keep it</button>
+    </form>
+  </article>
+  {{end}}
+  <h2 class="section-title">Reported</h2>
+  {{end}}
+
+  {{if not .Rows}}
+  <p class="empty">Nothing reported. All quiet.</p>
+  {{end}}
+
+  {{range .Rows}}
+  <article class="queue-item{{if .Serious}} queue-serious{{end}}">
+    <header class="queue-head">
+      <span class="queue-kind">{{.Kind}}</span>
+      <a href="{{.Link}}">{{.PostTitle}}</a>
+      {{if .Status}}<span class="queue-status">{{.Status}}</span>{{end}}
+    </header>
+    <p class="meta">
+      by {{if .AuthorDeleted}}[deleted]{{else}}<a class="anon" href="/admin/users/{{.Author}}">{{.Author}}</a>{{end}},
+      {{.CreatedAt.Format "2006-01-02 15:04"}} ·
+      {{.Reports}} {{if eq .Reports 1}}report{{else}}reports{{end}}, latest {{.Latest.Format "2006-01-02 15:04"}}
+    </p>
+    <ul class="queue-reasons">
+      {{range .ReasonCount}}<li{{if .Serious}} class="serious"{{end}}>{{.Label}} × {{.N}}</li>{{end}}
+    </ul>
+    {{if .Notes}}<ul class="queue-notes">{{range .Notes}}<li>“{{.}}”</li>{{end}}</ul>{{end}}
+    <div class="queue-text">{{.Text}}</div>
+
+    <form class="queue-actions" method="post" action="/admin/reports">
+      {{template "formguard" $.FormToken}}
+      <input type="hidden" name="post" value="{{.PostID}}">
+      <input type="hidden" name="comment" value="{{.CommentID}}">
+      <input type="hidden" name="author" value="{{.Author}}">
+      <button class="button" type="submit" name="action" value="dismiss">Dismiss</button>
+      <span class="queue-or">or</span>
+      <select name="reason" aria-label="Reason for removing">
+        <option value="">why remove?</option>
+        {{range $.Removal}}<option value="{{.Key}}">{{.Label}}</option>{{end}}
+      </select>
+      {{if not .AuthorDeleted}}
+      <select name="days" aria-label="Also suspend the author">
+        <option value="">and leave the author be</option>
+        {{range $.Lengths}}<option value="{{.Days}}">and suspend the author {{if .Days}}for {{end}}{{.Label}}</option>{{end}}
+      </select>
+      {{end}}
+      <button class="button button-danger" type="submit" name="action" value="remove">Remove</button>
+    </form>
+  </article>
+  {{end}}
+
+  <p class="hint">Dismissing closes the reports and leaves the post or comment as it is (one hidden by reports comes back).
+    Removing shows its reason in its place. Both go in the <a href="/modlog">moderation log</a>.</p>
+</main>
+{{end}}

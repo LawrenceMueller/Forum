@@ -1,0 +1,98 @@
+{{/*
+  adminuser.html: one account, for the admin: its standing, suspensions,
+  recent posts and comments, and the forms to suspend or lift.
+*/}}
+{{define "content"}}
+<main class="narrow admin-user">
+  <h1 class="page-title">{{.Account.Username}} <span class="admin-badge">admin</span></h1>
+  <p class="lede">Joined {{.Account.CreatedAt.Format "2006-01-02"}}
+    {{if .Account.DeletedAt}}· <strong>deleted {{.Account.DeletedAt.Format "2006-01-02"}}</strong>{{end}}
+    {{if .Account.IsAdmin}}· the admin{{end}}
+    · {{.Account.Posts}} posts · {{.Account.Comments}} comments · {{.Account.Removed}} removed by you</p>
+
+  {{if .Notice}}<div class="note" role="status"><p>{{.Notice}}</p></div>{{end}}
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  {{with .Active}}
+  <section class="panel panel-danger">
+    <h2>Suspended now</h2>
+    <p>{{if .Permanent}}Permanently{{else}}Until {{.EndsAt.Format "2006-01-02 15:04"}}{{end}}.
+      {{if .Appeal}}They appealed: “{{.Appeal}}”{{end}}</p>
+    <form class="inline-form" method="post" action="/admin/users/{{$.Account.Username}}/lift">
+      {{template "formguard" $.FormToken}}
+      <input type="hidden" name="suspension" value="{{.ID}}">
+      <button class="button" type="submit">Lift the suspension</button>
+    </form>
+  </section>
+  {{end}}
+
+  {{if .CanSuspend}}
+  <section class="panel">
+    <h2>{{if .Active}}Replace the suspension{{else}}Suspend{{end}}</h2>
+    <form class="form" method="post" action="/admin/users/{{.Account.Username}}/suspend">
+      {{template "formguard" .FormToken}}
+      <div class="admin-grid">
+        <div class="field">
+          <label for="reason">Reason</label>
+          <select id="reason" name="reason" required>
+            <option value="">why?</option>
+            {{range .Reasons}}<option value="{{.Key}}">{{.Label}}</option>{{end}}
+          </select>
+        </div>
+        <div class="field">
+          <label for="days">For</label>
+          <select id="days" name="days" required>
+            <option value="">how long?</option>
+            {{range .Lengths}}<option value="{{.Days}}">{{.Label}}</option>{{end}}
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="note">Note to them <span class="optional">optional, shown on their suspension page</span></label>
+        <textarea id="note" name="note" rows="3" maxlength="500"></textarea>
+      </div>
+      <p class="hint">They can still read and delete their own things, and appeal once. What they wrote stays up.</p>
+      <button class="button button-danger" type="submit">Suspend</button>
+    </form>
+  </section>
+  {{end}}
+
+  {{if .History}}
+  <section class="panel">
+    <h2>Suspensions</h2>
+    <table class="modlog">
+      <thead><tr><th>Started</th><th>Reason</th><th>Length</th><th>Now</th></tr></thead>
+      <tbody>
+        {{range .History}}
+        <tr><td class="modlog-when">{{.CreatedAt.Format "2006-01-02"}}</td><td>{{.Reason}}</td><td>{{.Length}}</td>
+          <td>{{.State}}{{if .Appeal}} · appealed{{end}}</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </section>
+  {{end}}
+
+  <section class="panel">
+    <h2>Recent posts</h2>
+    {{if .Posts}}
+    <ul class="admin-list">
+      {{range .Posts}}<li><a href="/p/{{.PublicID}}">{{.Title}}</a> <span class="hint">{{.CreatedAt.Format "2006-01-02"}}{{if .Removed}} · removed{{end}}</span></li>{{end}}
+    </ul>
+    {{else}}<p>None.</p>{{end}}
+  </section>
+
+  <section class="panel">
+    <h2>Recent comments</h2>
+    {{if .Comments}}
+    <ul class="admin-list">
+      {{range .Comments}}<li><a href="/p/{{.PostID}}#c-{{.PublicID}}">{{.Body}}</a> <span class="hint">on {{.PostTitle}}, {{.CreatedAt.Format "2006-01-02"}}{{if .Removed}} · removed{{end}}</span></li>{{end}}
+    </ul>
+    {{else}}<p>None.</p>{{end}}
+  </section>
+</main>
+{{end}}

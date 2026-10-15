@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -193,6 +194,9 @@ type postView struct {
 	Vote          voteWidget
 	CanEdit       bool   // the viewer wrote it and the edit window is open
 	EditLeft      string // "7 minutes", for the edit link
+	RemovedText   string // in its place when removed: "[removed: spam]"
+	Held          bool   // hidden by reports until the admin reviews it
+	CanReport     bool
 }
 
 func toPostView(p store.Post, tree *tags.Tree) postView {
@@ -211,6 +215,8 @@ func toPostView(p store.Post, tree *tags.Tree) postView {
 		Comments:      p.CommentCount,
 		LastActivity:  p.LastActivityAt,
 		Href:          "/p/" + p.PublicID,
+		RemovedText:   removedText(p.RemovalReason),
+		Held:          p.RemovalReason == "held",
 	}
 	if p.Body != "" {
 		v.BodyHTML = markdown.Render(p.Body)
@@ -241,11 +247,12 @@ type postPage struct {
 	RemoveToken string
 
 	// comments
-	Comments    []*commentNode
-	CommentSort string
-	LoggedIn    bool
-	Locked      bool // removed or deleted posts take no new comments
-	CommentForm replyForm
+	Comments        []*commentNode
+	CommentSort     string
+	LoggedIn        bool
+	Locked          bool // removed or deleted posts take no new comments
+	ViewerSuspended bool // the viewer is suspended: no comment form
+	CommentForm     replyForm
 }
 
 // Public IDs are exactly 8 characters of a-z and 2-7. Anything else can't
@@ -295,6 +302,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		p.Author, p.AuthorDeleted, p.Removed || p.Deleted, true)
 	view.CanEdit, view.EditLeft = canEdit(opts.viewer, p.Author, p.AuthorDeleted,
 		p.Removed || p.Deleted, p.CreatedAt)
+	view.CanReport = opts.viewer.canReport(p.Author, p.AuthorDeleted, p.Removed || p.Deleted)
 
 	data := postPage{
 		basePage:    newBasePage(r, p.Title).withUp("/", "front page"),
@@ -305,7 +313,8 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		LoggedIn:    loggedIn,
 		Locked:      p.Removed || p.Deleted,
 	}
-	if loggedIn && !data.Locked {
+	data.ViewerSuspended = u.Suspension != nil
+	if loggedIn && !data.Locked && !data.ViewerSuspended {
 		data.CommentForm = s.newReplyForm(p.PublicID, "", "")
 	}
 	if p.Removed && !u.IsAdmin {
@@ -344,10 +353,20 @@ func (s *Server) handleRemovePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.RemovePost(r.Context(), id); err != nil {
+	reason, ok := removalReason(w, r)
+	if !ok {
+		return
+	}
+	err := s.store.Remove(r.Context(), store.Item{PostID: id}, reason)
+	if errors.Is(err, store.ErrItemNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
 		serverError(w, err)
 		return
 	}
 	s.refreshStats()
+	s.refreshReports()
 	http.Redirect(w, r, "/p/"+id, http.StatusSeeOther)
 }

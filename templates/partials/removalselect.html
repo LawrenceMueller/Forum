@@ -1,0 +1,15 @@
+{{/*
+  removalselect.html: the reason picker on the admin's remove buttons. The
+  keys match store.RemovalReasons (and the database's check); the reason
+  shows publicly in the item's place, as "[removed: spam]".
+*/}}
+{{define "removalselect"}}
+<select name="reason" required aria-label="Reason for removing">
+  <option value="">why?</option>
+  <option value="spam">spam</option>
+  <option value="harassment">harassment</option>
+  <option value="personal">personal information</option>
+  <option value="illegal">illegal content</option>
+  <option value="rules">breaking the rules</option>
+</select>
+{{end}}

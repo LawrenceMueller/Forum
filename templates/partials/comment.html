@@ -19,7 +19,7 @@
   </summary>
 
   <div class="comment-content">
-    {{if .AdminSeesGone}}<p class="admin-note">removed: only you, as admin, can see this</p>{{end}}
+    {{if .AdminSeesGone}}<p class="admin-note">{{.RemovedAs}}: only you, as admin, can see this</p>{{end}}
 
     {{if .Placeholder}}
     <p class="comment-gone">{{.Placeholder}}</p>
@@ -41,9 +41,11 @@
          hx-target="#cb-{{.PublicID}}"
          title="{{.EditLeft}} left to edit">edit</a>
       {{end}}
+      {{if .CanReport}}<a class="report-link" href="/p/{{.PostID}}/c/{{.PublicID}}/report">report</a>{{end}}
       {{if .RemoveToken}}
-      <form class="inline-form" method="post" action="/p/{{.PostID}}/c/{{.PublicID}}/remove">
+      <form class="inline-form admin-remove" method="post" action="/p/{{.PostID}}/c/{{.PublicID}}/remove">
         {{template "formguard" .RemoveToken}}
+        {{template "removalselect"}}
         <button class="linklike admin-link" type="submit">remove</button>
       </form>
       {{end}}

@@ -36,3 +36,19 @@ func TestVoteSecretTooShort(t *testing.T) {
 		t.Errorf("want ErrVoteSecretTooShort, got %v", err)
 	}
 }
+
+func TestReporterFingerprints(t *testing.T) {
+	k, _ := NewVoterKeys(strings.Repeat("a", 32))
+	first, again := k.Reporter(7), k.Reporter(7)
+	if first != again {
+		t.Error("the same account must always get the same reporter fingerprint")
+	}
+	if k.Reporter(7) == k.Reporter(8) {
+		t.Error("different accounts must get different reporter fingerprints")
+	}
+	// Reports and votes are stored under different fingerprints, so the two
+	// can't be matched up to each other.
+	if k.Reporter(7) == k.Voter(7) {
+		t.Error("an account's reporter and voter fingerprints must differ")
+	}
+}

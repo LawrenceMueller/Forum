@@ -33,12 +33,13 @@ type voteWidget struct {
 // voteViewer is what every widget on a page needs to know about the viewer.
 // It's built once per page.
 type voteViewer struct {
-	user     store.User
-	loggedIn bool
-	voter    string // the viewer's vote fingerprint
-	eligible bool   // old enough to vote
-	token    string
-	back     string
+	user      store.User
+	loggedIn  bool
+	voter     string // the viewer's vote fingerprint
+	eligible  bool   // old enough to vote
+	suspended bool   // read-only for now (moderation)
+	token     string
+	back      string
 }
 
 func (s *Server) voteViewerFor(r *http.Request) voteViewer {
@@ -47,6 +48,7 @@ func (s *Server) voteViewerFor(r *http.Request) voteViewer {
 	if ok {
 		v.voter = s.voters.Voter(u.ID)
 		v.eligible = time.Since(u.CreatedAt) >= voteMinAccountAge
+		v.suspended = u.Suspension != nil
 		v.token = s.formToken(formVote)
 	}
 	return v
@@ -66,12 +68,20 @@ func (v voteViewer) widget(kind, id string, score, mine int, author string, auth
 		w.Reason = "Voting is closed on this."
 	case !authorDeleted && author != "" && author == v.user.Username:
 		w.Reason = "This one's yours."
+	case v.suspended:
+		w.Reason = "Your account is suspended, so it can't vote for now."
 	case !v.eligible:
 		w.Reason = "New accounts can vote after their first day."
 	default:
 		w.CanVote = true
 	}
 	return w
+}
+
+// canReport says whether the viewer may report an item: logged in, past
+// the first day (the voting rule), not their own, and still up.
+func (v voteViewer) canReport(author string, authorDeleted, gone bool) bool {
+	return v.loggedIn && v.eligible && !v.suspended && !gone && (authorDeleted || author != v.user.Username)
 }
 
 // myVotes looks up which of these items the viewer has voted on.

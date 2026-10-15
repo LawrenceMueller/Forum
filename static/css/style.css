@@ -1301,3 +1301,100 @@ a.domain:hover { color: var(--ink); }
 }
 .ack-like input { flex: none; width: 1rem; height: 1rem; margin: 0.15rem 0 0; accent-color: var(--link); }
 .form-danger .ack { margin: 0 0 1rem; }
+
+/* ---------- moderation ---------- */
+
+.report-link,
+.report-link:visited { color: var(--muted); }
+.report-link:hover { color: #9e2a2a; }
+.comment-actions .report-link { font-size: 0.9em; }
+
+.admin-remove select,
+.admin-actions select { font: inherit; font-size: 0.85em; padding: 0.1rem 0.2rem; }
+
+/* the admin's count of reported things, in the header */
+.button-alert,
+.button-alert:visited { color: var(--ink); background: var(--sled); border-color: #c9a01f; }
+
+.footer-links a,
+.footer-links a:visited { color: var(--muted); }
+
+/* reporting */
+.report-quote {
+  margin: 0 0 1rem;
+  padding: 0.4rem 0.75rem;
+  border-left: 3px solid var(--rule);
+  color: var(--muted);
+  font-style: italic;
+}
+.report-reasons { margin: 0 0 1rem; padding: 0; border: 0; min-width: 0; }
+.report-reasons legend { margin-bottom: 0.4rem; padding: 0; font-weight: bold; }
+.form .report-reason {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+  font-weight: normal;
+  cursor: pointer;
+}
+.report-reason input { flex: none; margin-top: 0.25rem; accent-color: var(--link); }
+.report-reason .hint { display: block; margin: 0; }
+.form .cancel { margin-left: 0.8rem; }
+
+/* the admin's queue */
+.admin-queue { padding: 1.5rem 1rem 2rem; }
+.queue-item {
+  margin-bottom: 1rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+}
+.queue-serious { border-left: 4px solid #a63d3d; }
+.queue-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.6rem; font-weight: bold; }
+.queue-kind {
+  padding: 0 0.35em;
+  font-size: 0.75em;
+  font-weight: normal;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--rule);
+}
+.queue-status { font-size: 0.85em; font-weight: normal; color: #9e2a2a; }
+.queue-item .meta { margin: 0.2rem 0; }
+.queue-reasons { display: flex; flex-wrap: wrap; gap: 0.3rem 0.8rem; margin: 0.3rem 0; padding: 0; list-style: none; font-size: 0.9em; }
+.queue-reasons .serious { color: #9e2a2a; font-weight: bold; }
+.queue-notes { margin: 0.3rem 0; padding-left: 1.2rem; font-size: 0.9em; color: var(--muted); }
+.queue-text {
+  max-height: 14rem;
+  overflow: auto;
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.6rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.9em;
+  background: var(--shade);
+}
+.queue-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; }
+.queue-actions select { font: inherit; padding: 0.25rem; }
+.queue-or { color: var(--muted); font-size: 0.85em; }
+
+/* the public log */
+.modlog { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+.modlog th { text-align: left; border-bottom: 1px solid var(--rule); padding: 0.3rem 0.4rem; }
+.modlog td { padding: 0.3rem 0.4rem; border-bottom: 1px dotted var(--rule); vertical-align: top; }
+.modlog-when { white-space: nowrap; color: var(--muted); }
+.modlog-detail { color: var(--muted); }
+
+.rules h2 { margin: 1.4rem 0 0.3rem; font-size: 1.1rem; }
+.rules p { margin: 0 0 0.6rem; }
+
+/* suspensions */
+.suspended-banner {
+  padding: 0.5rem 1rem;
+  background: #fbeaea;
+  border-bottom: 1px solid #c98a8a;
+  font-size: 0.9em;
+}
+.suspended-banner p { margin: 0; }
+.queue-appeal { border-left: 4px solid var(--sled); }
+.admin-queue .section-title { margin: 1rem 0 0.5rem; }

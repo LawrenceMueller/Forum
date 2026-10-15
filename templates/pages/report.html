@@ -1,0 +1,45 @@
+{{/* report.html: reporting a post or comment to the admin, and the thanks afterwards. */}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Report a {{.What}}</h1>
+  <blockquote class="report-quote">{{.Quote}}</blockquote>
+
+  {{if .Done}}
+  <div class="note" role="status">
+    <p><strong>Thanks, the admin will look at it.</strong>
+      {{if .Held}}Enough people reported it that it's now hidden until then.{{end}}</p>
+  </div>
+  <p><a href="{{.Back}}">Back to the {{.What}}</a></p>
+  {{else}}
+
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  <p class="lede">Reports go to the admin, who checks each one against the <a href="/rules">rules</a>.
+    Nobody can see who reported what, not even the admin.</p>
+
+  <form class="form" method="post" action="{{.Action}}">
+    {{template "formguard" .FormToken}}
+    <fieldset class="report-reasons">
+      <legend>What's wrong with it?</legend>
+      {{range .Reasons}}
+      <label class="report-reason">
+        <input type="radio" name="reason" value="{{.Key}}" required{{if eq .Key $.Reason}} checked{{end}}>
+        <span><strong>{{.Label}}</strong> <span class="hint">{{.Hint}}</span></span>
+      </label>
+      {{end}}
+    </fieldset>
+    <div class="field">
+      <label for="note">Note <span class="optional">optional, up to 200 characters</span></label>
+      <textarea id="note" name="note" rows="3" maxlength="200">{{.Note}}</textarea>
+    </div>
+    <button class="button" type="submit">Send report</button>
+    <a class="cancel" href="{{.Back}}">cancel</a>
+  </form>
+  {{end}}
+</main>
+{{end}}

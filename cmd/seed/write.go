@@ -131,7 +131,7 @@ func write(ctx context.Context, conn *pgx.Conn, w *world, keys *auth.VoterKeys, 
 	defer tx.Rollback(ctx)
 
 	// Start from empty tables (the seeded tags stay) and IDs from 1.
-	if _, err := tx.Exec(ctx, `TRUNCATE users, sessions, recovery_codes, posts, post_tags, tag_posts,
+	if _, err := tx.Exec(ctx, `TRUNCATE users, sessions, recovery_codes, posts, post_tags, tag_posts, reports, mod_log, suspensions,
 		comments, post_votes, comment_votes RESTART IDENTITY CASCADE`); err != nil {
 		return err
 	}

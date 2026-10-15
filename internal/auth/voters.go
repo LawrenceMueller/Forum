@@ -36,6 +36,15 @@ func NewVoterKeys(secret string) (*VoterKeys, error) {
 	return &VoterKeys{key: []byte(secret)}, nil
 }
 
+// Reporter returns the fingerprint an account's reports are filed under.
+// It's a different value from Voter, so the stored reports and votes of one
+// account can't be matched up with each other either.
+func (v *VoterKeys) Reporter(userID int64) string {
+	mac := hmac.New(sha256.New, v.key)
+	mac.Write([]byte("reporter:" + strconv.FormatInt(userID, 10)))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
 // Voter returns the fingerprint for an account.
 func (v *VoterKeys) Voter(userID int64) string {
 	mac := hmac.New(sha256.New, v.key)

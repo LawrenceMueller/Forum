@@ -17,6 +17,10 @@ type User struct {
 	Username  string
 	IsAdmin   bool // set by hand in psql, never through the site
 	CreatedAt time.Time
+
+	// Suspension is the account's suspension in force, or nil. Filled in by
+	// UserBySession, so every logged-in request knows.
+	Suspension *Suspension
 }
 
 // UsernameTaken is the courtesy check used when offering a name.

@@ -61,6 +61,7 @@ type rateLimits struct {
 	votingDaily  *limiter // per ACCOUNT: the daily budget
 	votingAuthor *limiter // per ACCOUNT per AUTHOR: votes on one person's content
 	editing      *limiter // saving edits to posts and comments, per ACCOUNT
+	report       *limiter // sending reports, per IP (accounts also have a daily cap)
 	suggest      *limiter // topic suggestions while typing, per IP
 }
 
@@ -81,6 +82,7 @@ func newRateLimits() rateLimits {
 		votingDaily:  newLimiter("voting-daily", 24*time.Hour/250, 250), // 250 a day, rolling
 		votingAuthor: newLimiter("voting-author", 24*time.Hour/10, 10),  // 10 a day per author
 		editing:      newLimiter("editing", 10*time.Second, 20),         // 20 at once, then one per 10s
+		report:       newLimiter("report", 30*time.Second, 10),          // 10 at once, then one per 30s
 		suggest:      newLimiter("suggest", 250*time.Millisecond, 40),   // brisk typing, not a scraper
 	}
 }
@@ -122,6 +124,7 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	}
 
 	s.refreshStats()
+	s.refreshReports()
 	go s.statsLoop()
 	return s, nil
 }
@@ -129,8 +132,9 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 // templateFuncs are the functions every template can call.
 func (s *Server) templateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"postCount": func() int64 { return s.stats.posts.Load() },
-		"commas":    commas,
+		"postCount":   func() int64 { return s.stats.posts.Load() },
+		"openReports": func() int64 { return s.stats.openReports.Load() },
+		"commas":      commas,
 	}
 }
 
@@ -171,25 +175,45 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /logout", noStore(s.handleLogout))
 
 	// Posts.
-	mux.Handle("GET /submit", noStore(s.handleSubmitPage))
-	mux.Handle("POST /submit", s.limit(lim.submit, noStore(s.handleSubmit)))
+	mux.Handle("GET /submit", noStore(s.notSuspended(s.handleSubmitPage)))
+	mux.Handle("POST /submit", s.limit(lim.submit, noStore(s.notSuspended(s.handleSubmit))))
 	mux.HandleFunc("GET /p/{id}", s.handlePost)
 	mux.Handle("POST /p/{id}/remove", noStore(s.handleRemovePost))
-	mux.Handle("GET /p/{id}/edit", noStore(s.handleEditPostPage))
+	mux.Handle("GET /p/{id}/edit", noStore(s.notSuspended(s.handleEditPostPage)))
 	mux.Handle("POST /p/{id}/delete", s.limit(lim.submit, noStore(s.handleDeletePost)))
-	mux.Handle("POST /p/{id}/edit", s.limit(lim.submit, noStore(s.handleEditPost)))
+	mux.Handle("POST /p/{id}/edit", s.limit(lim.submit, noStore(s.notSuspended(s.handleEditPost))))
 
 	// Votes.
-	mux.Handle("POST /vote", s.limit(lim.vote, noStore(s.handleVote)))
+	mux.Handle("POST /vote", s.limit(lim.vote, noStore(s.notSuspended(s.handleVote))))
 
 	// Comments.
-	mux.Handle("POST /p/{id}/comment", s.limit(lim.comment, noStore(s.handleComment)))
-	mux.Handle("GET /p/{id}/c/{cid}/reply", noStore(s.handleReplyForm))
+	mux.Handle("POST /p/{id}/comment", s.limit(lim.comment, noStore(s.notSuspended(s.handleComment))))
+
+	// Moderation (moderation.go).
+	mux.Handle("GET /p/{id}/report", noStore(s.notSuspended(s.handleReportPage)))
+	mux.Handle("POST /p/{id}/report", s.limit(lim.report, noStore(s.notSuspended(s.handleReport))))
+	mux.Handle("GET /p/{id}/c/{cid}/report", noStore(s.notSuspended(s.handleReportPage)))
+	mux.Handle("POST /p/{id}/c/{cid}/report", s.limit(lim.report, noStore(s.notSuspended(s.handleReport))))
+	mux.Handle("GET /admin/reports", noStore(s.adminOnly(s.handleQueue)))
+	mux.Handle("POST /admin/reports", noStore(s.adminOnly(s.handleModerate)))
+	mux.HandleFunc("GET /modlog", s.handleModLog)
+
+	// Suspensions and appeals (suspensions.go). Writing routes above are
+	// wrapped in notSuspended.
+	mux.Handle("GET /account/suspension", noStore(s.handleSuspensionPage))
+	mux.Handle("POST /account/suspension", s.limit(lim.report, noStore(s.handleAppeal)))
+	mux.Handle("GET /admin/users", noStore(s.adminOnly(s.handleAdminUser)))
+	mux.Handle("GET /admin/users/{name}", noStore(s.adminOnly(s.handleAdminUser)))
+	mux.Handle("POST /admin/users/{name}/suspend", noStore(s.adminOnly(s.handleAdminSuspend)))
+	mux.Handle("POST /admin/users/{name}/lift", noStore(s.adminOnly(s.handleAdminLift)))
+	mux.Handle("POST /admin/appeals", noStore(s.adminOnly(s.handleAppealDecision)))
+	mux.HandleFunc("GET /rules", s.handleRules)
+	mux.Handle("GET /p/{id}/c/{cid}/reply", noStore(s.notSuspended(s.handleReplyForm)))
 	mux.HandleFunc("GET /p/{id}/c/{cid}", s.handleCommentThread)
 	mux.Handle("POST /p/{id}/c/{cid}/remove", noStore(s.handleRemoveComment))
-	mux.Handle("GET /p/{id}/c/{cid}/edit", noStore(s.handleEditCommentForm))
+	mux.Handle("GET /p/{id}/c/{cid}/edit", noStore(s.notSuspended(s.handleEditCommentForm)))
 	mux.Handle("POST /p/{id}/c/{cid}/delete", s.limit(lim.comment, noStore(s.handleDeleteComment)))
-	mux.Handle("POST /p/{id}/c/{cid}/edit", s.limit(lim.comment, noStore(s.handleEditComment)))
+	mux.Handle("POST /p/{id}/c/{cid}/edit", s.limit(lim.comment, noStore(s.notSuspended(s.handleEditComment))))
 
 	mux.Handle("GET /account", noStore(s.handleAccount))
 	mux.Handle("GET /account/history", noStore(s.handleHistory))

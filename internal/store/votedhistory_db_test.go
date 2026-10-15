@@ -43,13 +43,13 @@ func TestVotedHistoryShowsTheRightThings(t *testing.T) {
 	vote(VoteComment, disliked2, "fp-me", me, -1)
 
 	// Removals and deletions after the votes (closed items can't be voted on).
-	if err := st.RemovePost(ctx, removed.PublicID); err != nil {
+	if err := st.Remove(ctx, Item{PostID: removed.PublicID}, "spam"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DeletePost(ctx, deleted.PublicID, author); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.RemoveComment(ctx, removedC); err != nil {
+	if err := st.Remove(ctx, Item{CommentID: removedC}, "spam"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DeleteComment(ctx, deletedC, author); err != nil {

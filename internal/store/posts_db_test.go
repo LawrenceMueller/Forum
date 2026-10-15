@@ -61,7 +61,7 @@ func TestListsHideRemovedAndDeletedPosts(t *testing.T) {
 	removed := mustPost(t, st, me, "Removed")
 	deleted := mustPost(t, st, me, "Deleted")
 
-	if err := st.RemovePost(ctx, removed.PublicID); err != nil {
+	if err := st.Remove(ctx, Item{PostID: removed.PublicID}, "spam"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DeletePost(ctx, deleted.PublicID, me); err != nil {
@@ -185,7 +185,7 @@ func TestCommentRules(t *testing.T) {
 	}
 
 	// Removed parents take no replies.
-	if err := st.RemoveComment(ctx, onA); err != nil {
+	if err := st.Remove(ctx, Item{CommentID: onA}, "spam"); err != nil {
 		t.Fatal(err)
 	}
 	_, _, err = st.CreateComment(ctx, NewComment{PostID: postA.ID, ParentPublicID: onA, AuthorID: me, Body: "late"})
@@ -197,7 +197,7 @@ func TestCommentRules(t *testing.T) {
 	}
 
 	// Removed posts take no comments.
-	if err := st.RemovePost(ctx, postB.PublicID); err != nil {
+	if err := st.Remove(ctx, Item{PostID: postB.PublicID}, "spam"); err != nil {
 		t.Fatal(err)
 	}
 	_, _, err = st.CreateComment(ctx, NewComment{PostID: postB.ID, AuthorID: me, Body: "hello?"})

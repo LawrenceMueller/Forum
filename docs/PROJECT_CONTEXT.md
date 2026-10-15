@@ -2,7 +2,7 @@
 
 This document is the single place to understand Snowball: what it is, how it is built, what exists today and where it lives in the code, and what is planned. Someone who has never seen the project should be able to read it top to bottom and start working on tickets.
 
-Last updated: after the performance pass (section 10, "Performance": `cmd/bench`, the `tag_posts` table in migration 00012, a cache for rendered comments), which followed the admin tag page (tags v2 Phase 1 part B, finishing Phase 1: create, rename, re-parent, aliases, merge and delete tags from the site; section 7.11), with migration 00011 (the misleading `.net` alias), a health test on the real tree and a type-ahead fuzz target. Before that: the topic type-ahead (section 7.10), which followed tags v2 Phase 1 part A (the tag tree in the database, typed topics with formats and levels, tag pages that include everything below, cached counts; section 11.1), the tag system v2 design, the upvoted and downvoted history views, the seed program (`cmd/seed`, a realistic made-up site for browsing and for measuring queries) and the testing chapter (database, request-level, smoke, fuzz, concurrency and migration tests; staticcheck and govulncheck; CI; the one-command check script), which followed posting slices five and six and the "up" navigation links. Next up: moderation; images wait for moderation (section 11.2).
+Last updated: after moderation slice 2 (suspensions, read-only accounts, appeals, the admin's account page; section 7.19, migration 00014), which followed moderation slice 1 (reports, the admin's queue, removal reasons shown publicly, auto-hiding for serious reports, the public `/modlog`, `/rules`; section 7.19, migration 00013), which followed the performance pass (section 10, "Performance": `cmd/bench`, the `tag_posts` table in migration 00012, a cache for rendered comments), which followed the admin tag page (tags v2 Phase 1 part B, finishing Phase 1: create, rename, re-parent, aliases, merge and delete tags from the site; section 7.11), with migration 00011 (the misleading `.net` alias), a health test on the real tree and a type-ahead fuzz target. Before that: the topic type-ahead (section 7.10), which followed tags v2 Phase 1 part A (the tag tree in the database, typed topics with formats and levels, tag pages that include everything below, cached counts; section 11.1), the tag system v2 design, the upvoted and downvoted history views, the seed program (`cmd/seed`, a realistic made-up site for browsing and for measuring queries) and the testing chapter (database, request-level, smoke, fuzz, concurrency and migration tests; staticcheck and govulncheck; CI; the one-command check script), which followed posting slices five and six and the "up" navigation links. Next up: moderation slice 3 (cleanup with vote withdrawal, spam shadowbans; design in section 11.2); images wait for moderation (section 11.2).
 
 ---
 
@@ -183,12 +183,14 @@ snowball/
       users.go              Users: availability, creation, credentials, password change, soft delete.
       sessions.go           Session create/lookup/delete, delete-all-for-user, expired cleanup.
       recovery.go           Account recovery transaction, remaining code count.
-      posts.go              Creating posts (random public IDs), loading one post, admin removal.
+      posts.go              Creating posts (random public IDs), loading one post.
       tags.go               Tag rows (tags, parents, aliases) for building the tree; tag post counts.
       tagadmin.go           Changing the tag tree (create, rename, parents, aliases, merge, delete), checked and closure-rebuilt in one transaction.
       tagposts.go           Keeping tag_posts (every post under every tag it shows up under) in step.
       lists.go              Post lists with keyset pagination (new, active, top, hot), tag filters, post count.
-      comments.go           Loading a post's comments, creating comments, admin removal.
+      comments.go           Loading a post's comments, creating comments.
+      moderation.go         Reports (with auto-hiding), removing with a reason, dismissing, the queue, the moderation log.
+      suspensions.go        Suspensions, appeals, the admin's view of an account.
       votes.go              Voting (toggle logic, counts), the viewer's votes, vote state, author lookup.
       edits.go              Editing posts and comments (window and grace enforced in SQL).
       deletes.go            Erasing posts and comments, erasing an account's content, history queries.
@@ -204,6 +206,8 @@ snowball/
       home.go               Name colors, sort bar data, front page, list pages.
       tags.go               The tag tree in memory, tag pages, /tags, the sidebar, the forms' tag fields, the type-ahead.
       tagadmin.go           The admin tag page (/admin/tags).
+      moderation.go         Report pages, the admin's queue (/admin/reports), removal reasons, /modlog, /rules.
+      suspensions.go        The read-only guard, the suspension banner and page with its appeal, /admin/users/{name}.
       posts.go              Submit page, post validation, post view preparation, post page, admin removal.
       comments.go           Comment trees (build, prune, sort, depth rules), Wilson score, reply forms, thread pages.
       votes.go              Vote arrows (widgets), who may vote, vote limits, the vote handler.
@@ -446,6 +450,8 @@ Email, IP addresses, user agents, device names, locations, last-login time, logi
 | 00010_tags_v2.sql | Tags v2: `display_name`, `description`, `facet`; `tag_parents`, `tag_aliases`, `tag_closure`; the starter tree (generated from the reviewed tree file); old tags renamed in place so their posts follow (`food`, `tech`, `diy`, `ask`, `show`). Its Down removes the new tags and restores the old ten. |
 | 00011_drop_dotnet_alias.sql | Removes C#'s alias `.net`: matching ignores punctuation, so it really meant "net" and caught people meaning networking. The admin page now refuses such aliases (`tags.AliasProblem`). |
 | 00012_tag_posts.sql | `tag_posts (tag_id, post_id, created_at, direct)`: every post under every tag it shows up under, filled from `post_tags` and `tag_closure`; indexes in tag-page order (and a partial one for "this tag only"). Derived data, kept in step by store/tagposts.go. |
+| 00013_moderation.sql | `removal_reason` on posts and comments (spam, harassment, personal, illegal, rules, or `held` by reports); `reports` (post, optional comment, reporter fingerprint, reason, note, handled time; one per person per item); `mod_log` (action, public IDs, reason, reports settled, time). |
+| 00014_suspensions.sql | `suspensions` (account, reason, note, created, `ends_at` NULL for permanent, `lifted_at`, one `appeal` with its times); `mod_log` gains account actions (`suspend`, `lift`, `keep`), a `detail` column, and a nullable post ID. |
 | 00009_erase_deleted_content.sql | `deleted_post_is_erased`; comment body may be empty only when deleted; `deleted_comment_is_erased`. |
 
 ### Query conventions
@@ -470,6 +476,14 @@ All queries use `$1`-style placeholders, never string building with input (no SQ
 | GET `/submit`, POST `/submit` | `handleSubmitPage`, `handleSubmit` (posts.go) | noStore; POST: limit `submit` | Login required. |
 | GET `/p/{id}` | `handlePost` (posts.go) | | Post, comments, `?sort=best|new|old`. |
 | POST `/p/{id}/remove` | `handleRemovePost` (posts.go) | noStore | Admin only; others get 404. |
+| GET, POST `/p/{id}/report`, `/p/{id}/c/{cid}/report` | `handleReportPage`, `handleReport` (moderation.go) | noStore; POST: limit `report` | Report a post or comment. Login, past the first day, not your own, still up. |
+| GET, POST `/admin/reports` | `handleQueue`, `handleModerate` (moderation.go) | noStore; admin only | The queue; POST dismisses or removes (with a reason) one item. |
+| GET, POST `/account/suspension` | `handleSuspensionPage`, `handleAppeal` (suspensions.go) | noStore; POST: limit `report` | Why and until when; the one appeal. Not suspended: 303 to `/account`. |
+| GET `/admin/users/{name}` (and `?name=` lookup) | `handleAdminUser` (suspensions.go) | noStore; admin only | An account: standing, suspensions, recent posts and comments, suspend and lift forms. |
+| POST `/admin/users/{name}/suspend`, `/lift` | `handleAdminSuspend`, `handleAdminLift` | noStore; admin only | |
+| POST `/admin/appeals` | `handleAppealDecision` | noStore; admin only | `action=lift` or `keep`. |
+| GET `/modlog` | `handleModLog` (moderation.go) | | The public moderation log (`?before=<id>` for older); the admin also sees dismissals. |
+| GET `/rules` | `handleRules` (moderation.go) | | The rules the removal reasons point at. |
 | GET, POST `/admin/tags` | `handleAdminTags`, `handleAdminCreateTag` (tagadmin.go) | noStore; admin only (`adminOnly`, 404 for others) | Every tag (filter with `?q=`), health warnings, the new-tag form. |
 | GET `/admin/tags/{tag}` | `handleAdminTag` | noStore; admin only | One tag's admin page. An old name or alias 303s to the current slug's page. |
 | POST `/admin/tags/{tag}/details`, `/parents`, `/aliases`, `/merge`, `/delete` | `handleAdminTag…` | noStore; admin only | The changes (section 7.11). Success redirects with `?done=<code>` for the notice; a refusal shows the page again with the reason. |
@@ -543,6 +557,7 @@ Token buckets held only in memory: "burst" is how many at once, then one more pe
 | `posting` | 5, 1 per 5 min | account | Inside `handleSubmit`, when publishing |
 | `editing` | 20, 1 per 10s | account | Saving edits to posts and comments |
 | `suggest` | 40, 1 per 250 ms | IP | Topic suggestions and picks while typing |
+| `report` | 10, 1 per 30 s | IP | Sending reports (each account also has a cap of 10 a day, counted in the database) |
 | `comment` | 20, 1 per 3s | IP | POST `/p/{id}/comment` |
 | `commenting` | 10, 1 per 30s | account | Inside `handleComment`, when publishing |
 | `vote` | 30, 1 per 3s | IP | POST `/vote` |
@@ -574,6 +589,9 @@ Every form includes `{{template "formguard" .Token}}`: a honeypot input named `h
 | Delete your own post or comment | `formDeleteItem` | 1 s |
 | Admin: remove post, remove comment | `formRemovePost`, `formRemoveComment` | none |
 | Admin: every tag change | `formTagAdmin` (one token shared by the page's forms) | none |
+| Admin: queue actions | `formModerate` | none |
+| Reporting a post or comment | `formReport` | 2 s |
+| Appealing a suspension | `formAppeal` | 5 s |
 
 To add a form: add a `formRule`, a token field set via `s.formToken(rule)` wherever the page is built, the `formguard` partial inside the `<form>`, and a `checkForm` call in its POST handler.
 
@@ -591,7 +609,7 @@ To add a form: add a `formRule`, a token field set via `s.formToken(rule)` where
 
 **Topic type-ahead** (htmx; `topicfield` and `topichelp` in partials/tagpicker.html). The topics box stays a plain text field; htmx adds `hx-get="/tags/suggest"` with `hx-trigger="input changed delay:200ms"` and `hx-sync="this:replace"` (a newer keystroke cancels the request in flight). The server splits the box with `tags.Typing` (settled parts before the last comma, the part being typed after it) and ranks matches with `Tree.Suggest`: exact name or alias, then display name or slug prefix, alias prefix, a word in the display name, and from three letters on anything containing it; ties go to the busier tag (cached counts), then alphabetical; at most 8, each shown with its place in the tree ("Sourdough in Food & drink › Baking › Bread"). Settled topics and their ancestors aren't offered again; with three settled nothing is offered. Under the box, `Tree.Recognized` confirms what's already matched and what it brings along ("Topics: Sourdough. Also shows under Baking, Bread, Food & drink."), also on page load (handy on the edit page). Each suggestion is a `<button type="button">` asking `/tags/pick`, which returns the whole field with `tags.WithPick` applied (settled parts kept, the pick's display name added, then ", ") and `autofocus`; snowball.js puts the caret at the end and adds arrow keys (Down from the box into the list, Up/Down within it, Escape back). The matching lives only in Go, so suggestions can never disagree with what posting accepts, and no tag list is shipped to the page. Without JavaScript nothing changes: the box is matched when the form is sent.
 
-**Admin removal**: `POST /p/{id}/remove` sets `removed_at`. Removed posts vanish from every list and count, show "[removed]" to everyone else, take no new comments or votes, and stay fully visible to the admin with a banner. The endpoint answers non-admins with a 404 so it doesn't admit it exists.
+**Admin removal**: `POST /p/{id}/remove` (with a reason; section 7.19) sets `removed_at` and `removal_reason`. Removed posts vanish from every list and count, show "[removed: spam]" (the reason) to everyone else, take no new comments or votes, and stay fully visible to the admin with a banner. The endpoint answers non-admins with a 404 so it doesn't admit it exists.
 
 ### 7.11 Lists, tags, and ranking (web/home.go, web/tags.go, store/lists.go)
 
@@ -692,6 +710,26 @@ No log line contains passwords, tokens, recovery codes, cookies, IP addresses, o
 
 ---
 
+### 7.19 Moderation (web/moderation.go, store/moderation.go)
+
+Slice 1 of the moderation chapter (design in section 11.2).
+
+**Reporting.** Under every post and comment, a "report" link for logged-in accounts past their first day, on things that aren't their own and are still up (`voteViewer.canReport`). It leads to a small page (works without JavaScript): the reasons as radio buttons with a line of explanation each (spam, harassment, personal information, illegal content, wrong tags, something else), and an optional note (200 characters; required for "something else"). The report is stored under `auth.VoterKeys.Reporter(userID)`, an HMAC of the account ID with the vote secret but a different label from the vote fingerprint, so reports can't be traced to accounts, nor matched with the same account's votes. The database allows one report per person per item (`one_report_per_person`) and the store allows 10 per person per 24 hours, counted from the table, so it survives restarts.
+
+**Auto-hiding.** When a report is for illegal content or personal information and that makes `HoldAfter` (3) open serious reports on the item, the same transaction hides it: `removed_at` set, `removal_reason = 'held'`, a comment's post loses one from its visible count, and a `hold` goes in the log. Readers see "[hidden while reports are reviewed]"; the reporter who tipped it over is told. Other reasons never hide anything.
+
+**The queue** (`/admin/reports`, admin only): one entry per reported item, serious reasons first, then the most reported, then the newest; up to 100. Each shows the item's kind, its post's title (linked to the item in context), any hidden state, the author and time, the reasons with counts (serious ones in red), the reporters' notes, and the raw text (never rendered, so hidden links and tricks show plainly). Two actions: **Dismiss** closes the reports (a held item comes back, logged as `restore`); **Remove** with a reason. The header shows the admin "N reported" (posts and comments with open reports, cached and refreshed after every report and action, and each minute).
+
+**Removing.** `store.Remove` is the one path, from the queue or from the remove buttons on the post page and comments (which now ask for a reason: spam, harassment, personal information, illegal content, breaking the rules). In one transaction: lock the row, set `removed_at` and the reason (removing something held just changes its reason; counts change only once), close its open reports, write the log. Readers see "[removed: spam]"; posts removed before reasons existed say "[removed]".
+
+**The log** (`mod_log`, `/modlog`): every hold, removal, restore and dismissal, with public IDs (not foreign keys, so the log outlives what it describes), the reason, and how many reports it settled. The public page shows the first three ("Post removed: spam, after 2 reports"), never content or names, linking to the item's place (which shows only its placeholder). The admin's view also shows dismissals.
+
+**Rules** (`/rules`): one section per removal reason, with anchors matching the keys. The text is a draft for the owner to rewrite.
+
+**Suspensions** (slice 2; web/suspensions.go, store/suspensions.go). From the admin's page for an account (`/admin/users/{name}`, reached from author names in the queue or the lookup on the account page), or straight from the queue ("Remove" with "and suspend the author for ..."): a reason from the removal list, a length (1, 7 or 30 days, or permanent) and an optional note to the person. A new suspension replaces one in force; the admin account can't be suspended. `UserBySession` loads the suspension in force in the same query (`LEFT JOIN LATERAL`), so every request knows at no extra cost. A suspended account is **read-only**: `notSuspended` wraps every route that writes (submit, comment, reply form, vote, report, edit) and sends it to `/account/suspension` (htmx gets a 403 line); the pages hide the controls (`voteViewer.suspended`: no comment form, no reply, report or edit links, vote arrows explain). Reading, logging in and out, changing the password, and deleting its own posts, comments or whole account all still work. A banner on every page gives the reason and end date and links to `/account/suspension`, which shows the reason (linked to its rule), the admin's note, the end, and the **appeal**: one per suspension, 10 to 500 characters. Appeals appear at the top of the queue (and in the header count, now "N to review") with "Lift the suspension" or "Keep it"; a kept suspension tells the person their appeal was read. Suspensions end on their own when `ends_at` passes; nothing has to run. The log records `suspend` ("Account suspended for 7 days: harassment", "Account banned: spam"), `lift` ("Suspension lifted", "... after an appeal") and `keep` (admin-only), never naming the account.
+
+Still to come (section 11.2): cleanup and vote withdrawal, spam shadowbans, probation and content checks, and erasing removed text and handled reports after 30 days.
+
 ## 8. Product decisions log
 
 | Decision | Reasoning |
@@ -706,6 +744,12 @@ No log line contains passwords, tokens, recovery codes, cookies, IP addresses, o
 | Adult content later, as a post flag | Explicit content waits for moderation and legal research (age-verification laws, host terms). When it comes, NSFW is a flag on the post (hidden by default, opt-in), never a tag; tags can force it. |
 | Tag changes are checked against the whole tree, inside the transaction | One path for every change: make it, read the result back, check it with the same rules the site uses, roll back on any new problem. A change that would loop or mislead never reaches the database, and `tag_closure` always matches the parents it was built from. |
 | Renames and merges keep the old names as aliases | Old links, bookmarks and habits keep working; nothing a member typed before stops meaning something. |
+| Reporters are anonymous, even to the admin | A keyed fingerprint (like votes) is enough to stop duplicate and excessive reports; storing who reported whom would be a record of members' relationships. |
+| Auto-hide only for illegal content and personal information (3 reports) | Harm that can't wait for the admin to wake up; anything else waits for review, so groups can't brigade ordinary posts away. |
+| Suspended accounts are read-only, and can still delete their own content | Sanctions limit participation, not the right to erase what you wrote. |
+| Shadowbans for spam bots only | Bots keep posting into nothing instead of making new accounts; on people it would be deception. |
+| Public moderation log without content | Shows rules are enforced evenly, without repeating what was removed or naming anyone. |
+| Removed text erased after 30 days | Long enough for appeals and mistakes; fits "store as little as possible". |
 | Topic suggestions come from the server | The type-ahead asks the same Go code that checks the form, so a suggestion can never be refused on posting, and the page carries no tag list or JavaScript matcher to keep in step. Costs a small request per pause in typing (rate limited, around 1 ms each). |
 | Follows and mutes stored on the account | Accepted cost: visible only on private account pages, and an account carries no real-world identity. |
 | Front page is a hybrid | "Popular today" (hot ranking) plus bump-ordered "active" conversations. |
@@ -813,11 +857,11 @@ The concurrency tests cover: one voter's rapid clicks on one arrow (must all suc
 
 ### What's covered
 
-- `auth`: hashing and verification, damaged and unsafe hashes, normalization, password rules, the hashing semaphore, form tokens, voter fingerprints and the vote secret's minimum length.
+- `auth`: hashing and verification, damaged and unsafe hashes, normalization, password rules, the hashing semaphore, form tokens, voter fingerprints and the vote secret's minimum length; reporter fingerprints differ from voter fingerprints.
 - `markdown`: allowed formatting, dangerous input blocked, links `nofollow`, headings flattened to text; the render cache (same output as rendering, bounded, safe to share between requests).
-- `store`: usernames unique forever and well-formed, credentials, sessions, logout everywhere, password change, recovery codes spent exactly once, account deletion (with and without content, including vote unlinking), posts and their database-enforced limits, lists hiding removed and deleted posts, pagination that never skips or repeats, comments and their rules, vote toggling and rules, comment votes and "my votes", vote tables staying private, edit windows and grace, deletion erasing content but keeping threads, history, the voted history views (what's included, and paging posts and comments together without skips or repeats), the database refusing broken data, cursor parsing, and the concurrency cases above; changing tags: creating one builds its closure rows, a check that objects rolls everything back, parents and aliases added and removed, renaming with old names kept, merging (posts, children, names), deleting only unused tags; `tag_posts` staying in step through posting, editing, re-parenting and merging.
+- `store`: usernames unique forever and well-formed, credentials, sessions, logout everywhere, password change, recovery codes spent exactly once, account deletion (with and without content, including vote unlinking), posts and their database-enforced limits, lists hiding removed and deleted posts, pagination that never skips or repeats, comments and their rules, vote toggling and rules, comment votes and "my votes", vote tables staying private, edit windows and grace, deletion erasing content but keeping threads, history, the voted history views (what's included, and paging posts and comments together without skips or repeats), the database refusing broken data, cursor parsing, and the concurrency cases above; changing tags: creating one builds its closure rows, a check that objects rolls everything back, parents and aliases added and removed, renaming with old names kept, merging (posts, children, names), deleting only unused tags; `tag_posts` staying in step through posting, editing, re-parenting and merging; moderation: one report per person, the daily cap, serious reports hiding at the third (ordinary ones never), dismissing restoring a held item and its count, removing with a reason (held to removed counts once), the queue's order and contents, and the public log leaving out dismissals; suspensions: carried by the session lookup, ending on time, one appeal, keeping and lifting, replacing, the admin exempt, the log's account entries.
 - `tags`: normalizing names, ancestors and paths (including two parents), loops refused, lookups (aliases, ambiguity), choosing a post's tags (forgiving spelling, implied ancestors, limits, wrong facets, tampered values), chips and the edit round trip; the type-ahead pieces (splitting the box, ranking, picking; fuzzed by `FuzzTopicsBox`); slug, display name and alias rules, `Slugify`, and `Tree.Check` finding each kind of misleading name.
-- `web`: client IPs, limiters (burst, forgetting, status), the login guard, durations, post validation, number formatting, Wilson scores, comment trees and depth rules, safe return paths, vote widget rules, the edit window, history snippets; and through whole requests: login (including bot checks), logout everywhere, sign-up (including a forged name), logged-out redirects, cross-site refusal, nobody editing or deleting others' work, admin endpoints hidden from everyone else, submitting, commenting and replying, voting, the upvoted and downvoted views (private to the voter, unvoting removes an item), tag pages including everything below and the "this tag only" switch, old names and aliases redirecting, ambiguous names, the tag index and sidebar counts, typed topics on submit (unknown, ambiguous, forgiving spelling) and the edit page's tag round trip, topic suggestions (ranking, shared aliases, settled topics and their ancestors left out, three-topic cap, no match, length cap) and picks (what the box ends up holding posts cleanly; formats and unknown slugs refused); the real starter tree's health (no misleading names, every alias leads home, `tag_closure` matching the parent links); the admin tag page (a 404 and no links for non-admins; creating, renaming with old links still arriving, re-parenting and aliases live at once, including in the type-ahead; each refusal with its message and nothing changed; merging and deleting); plus the smoke tests of every page and fragment.
+- `web`: client IPs, limiters (burst, forgetting, status), the login guard, durations, post validation, number formatting, Wilson scores, comment trees and depth rules, safe return paths, vote widget rules, the edit window, history snippets; and through whole requests: login (including bot checks), logout everywhere, sign-up (including a forged name), logged-out redirects, cross-site refusal, nobody editing or deleting others' work, admin endpoints hidden from everyone else, submitting, commenting and replying, voting, the upvoted and downvoted views (private to the voter, unvoting removes an item), tag pages including everything below and the "this tag only" switch, old names and aliases redirecting, ambiguous names, the tag index and sidebar counts, typed topics on submit (unknown, ambiguous, forgiving spelling) and the edit page's tag round trip, topic suggestions (ranking, shared aliases, settled topics and their ancestors left out, three-topic cap, no match, length cap) and picks (what the box ends up holding posts cleanly; formats and unknown slugs refused); the real starter tree's health (no misleading names, every alias leads home, `tag_closure` matching the parent links); the admin tag page (a 404 and no links for non-admins; creating, renaming with old links still arriving, re-parenting and aliases live at once, including in the type-ahead; each refusal with its message and nothing changed; merging and deleting); who sees report links, the report form's checks and refusals (own content, new accounts, logged out), reports stored under the reporter fingerprint, serious reports hiding a comment, the queue for admins only with its header count, removing and dismissing from it, removal reasons required and shown in place, the public log without content or dismissals, and the rules page; a suspended account's banner, hidden controls, refused writes (posting, commenting, reporting, editing, voting over htmx) and allowed reading and deleting; the suspension page and its one appeal; the admin's account page, suspending and lifting, the admin exempt; deciding appeals; removing and suspending in one step from the queue; plus the smoke tests of every page and fragment.
 - `testdb`: the migration round trip.
 
 Not covered yet: a red-team bot attacking the defenses from outside, load testing, and the browser side (snowball.js, htmx behavior in a real browser).
@@ -860,7 +904,7 @@ Load test, 50 visitors at once for 20 seconds, with server, Postgres and load ge
 
 Order from here: tags v2 Phase 1 (11.1), then the performance pass (11.5), then moderation (11.2), then images.
 
-### 11.1 Tag system v2 (designed, not built)
+### 11.1 Tag system v2 (Phase 1 built)
 
 The owner's design doc ("Forum Tag System: rules and examples") is the base; the starter tree lives in a separate working doc ("Snowball Starter Tag Tree"). What was decided:
 
@@ -904,7 +948,21 @@ The owner's design doc ("Forum Tag System: rules and examples") is the base; the
 
 **Why images wait.** A working report, review, and takedown process must exist before uploads open: anonymous upload sites attract illegal content, the site's operator is responsible for what it hosts, and US providers aware of apparent child sexual abuse material must report it (research the obligations before launch). The leaning is a short moderation chapter first, then images built on it. The alternative is building images now behind a setting that keeps uploads switched off.
 
-**Moderation chapter (proposed next).** Built so far: the admin can remove posts and comments. To decide and build: reports (users flag a post or comment with a reason), an admin queue to review them, bans (and what happens to a banned account's content), shadowbans, and one-click cleanup of an account and everything it posted.
+**Moderation chapter (designed October 2026; slices 1 and 2 built).** Built so far: the admin can remove posts and comments. The design, agreed with the owner:
+
+- **Reports.** Logged-in accounts past the 1-day probation (the voting rule) can report posts and comments. Reasons from a fixed list: spam, harassment or abuse, personal information (doxxing), illegal content, wrong tags, other; plus an optional note (200 characters). The reporter is stored only as a keyed fingerprint (like votes), never an account ID, so not even the admin can see who reported; the fingerprint allows one report per person per item and a limit of 10 a day. The reporter sees "Thanks, the admin will look at it." Report rows are deleted 30 days after being handled.
+- **Auto-hide, for serious reasons only.** Three reports from different accounts for illegal content or personal information hide the item until the admin reviews it; other reasons only wait in the queue (so a group can't brigade an ordinary post away).
+- **The queue** (`/admin/reports`): one row per reported item with its reasons and count; illegal content and personal information first, then the most reported. It shows the text, a link to its context, and the author's name linked to an admin view of their history. Actions: dismiss, remove, remove and suspend the author, remove everything by the author. The admin's header shows the number of open reports.
+- **Removal reasons, shown publicly.** Removing asks for a reason from the same list; readers see "[removed: spam]" rather than a bare "[removed]".
+- **Suspensions and bans:** 1 day, 7 days, 30 days, or permanent, with a reason and an optional note. A suspended account is read-only: it can log in, read, and delete its own content, but not post, comment, vote or report. A banner gives the reason and end date. Its content stays unless the admin also cleans it up. One appeal per suspension (500 characters) from the banner, delivered to the queue. Ban evasion (signing up again) is accepted; the defenses are probation, proof-of-work and invites, not fingerprinting people.
+- **Shadowbans, for obvious spam bots only.** The author still sees their posts and comments; nobody else does, and their votes aren't counted. Never used on people, since it deceives them.
+- **Cleanup:** one action removes everything an account posted and withdraws its votes, correcting scores (the server can recompute an account's vote fingerprint with the secret; nothing new is stored).
+- **Moderation log:** every action with its target, reason and time. A public `/modlog` lists actions without content or names ("post removed: spam, Oct 12"), so enforcement can be seen to be even.
+- **Retention:** removed posts and comments keep their text for 30 days (for appeals and mistakes), then it's erased; handled reports are deleted after 30 days too.
+- **Anti-spam layers:** probation for the first 3 days (no links, slower posting limits), duplicate detection with `content_hash`, and an admin-edited domain blocklist.
+- **A `/rules` page** in the owner's voice, so removal reasons point at something.
+
+Build order: (1) reports, the queue, removal reasons, the log and `/modlog` (built: section 7.19); (2) suspensions and appeals (built); (3) cleanup, vote withdrawal and spam shadowbans; (4) probation, duplicates and the blocklist; (5) the 30-day erasing of removed text and handled reports. Before images: research the US duties for reporting and preserving illegal images (NCMEC), ideally with a lawyer.
 
 Anti-bot layers still to build into posting:
 

@@ -1,0 +1,30 @@
+{{/*
+  modlog.html: the public moderation log. What was done, why, and when;
+  never the content, and never who wrote or reported it.
+*/}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Moderation log</h1>
+  <p class="lede">Every removal, with its reason, so you can see the <a href="/rules">rules</a> applied
+    evenly. It never shows what was removed or who wrote or reported it.</p>
+
+  {{if .Rows}}
+  <table class="modlog">
+    <thead><tr><th>When</th><th>What</th><th></th></tr></thead>
+    <tbody>
+      {{range .Rows}}
+      <tr>
+        <td class="modlog-when">{{.When.Format "2006-01-02 15:04"}}</td>
+        <td>{{if .Link}}<a href="{{.Link}}">{{.What}}</a>{{else}}{{.What}}{{end}}</td>
+        <td class="modlog-detail">{{.Detail}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">Nothing yet.</p>
+  {{end}}
+
+  {{if .NextURL}}<nav class="pager"><span></span><a href="{{.NextURL}}">older entries</a></nav>{{end}}
+</main>
+{{end}}

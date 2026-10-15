@@ -39,8 +39,9 @@ type Post struct {
 	Score          int
 	CommentCount   int
 	Tags           []string
-	Deleted        bool // by its author
-	Removed        bool // by the admin
+	Deleted        bool   // by its author
+	Removed        bool   // by the admin, or held by reports
+	RemovalReason  string // why, when removed: "spam", "held", ... ("" if unrecorded)
 }
 
 // Public IDs are 8 characters of lowercase base32 (a-z, 2-7): 40 random
@@ -135,7 +136,7 @@ func (s *Store) PostByPublicID(ctx context.Context, publicID string) (p Post, fo
 		       u.username, u.deleted_at IS NOT NULL,
 		       p.created_at, p.edited_at, p.score, p.comment_count,
 		       coalesce(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}'),
-		       p.deleted_at IS NOT NULL, p.removed_at IS NOT NULL
+		       p.deleted_at IS NOT NULL, p.removed_at IS NOT NULL, coalesce(p.removal_reason, '')
 		FROM posts p
 		JOIN users u ON u.id = p.author_id
 		LEFT JOIN post_tags pt ON pt.post_id = p.id
@@ -146,7 +147,7 @@ func (s *Store) PostByPublicID(ctx context.Context, publicID string) (p Post, fo
 	).Scan(&p.ID, &p.PublicID, &p.Title, &p.URL, &p.Body,
 		&p.Author, &p.AuthorDeleted,
 		&p.CreatedAt, &p.EditedAt, &p.Score, &p.CommentCount,
-		&p.Tags, &p.Deleted, &p.Removed)
+		&p.Tags, &p.Deleted, &p.Removed, &p.RemovalReason)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Post{}, false, nil
@@ -155,12 +156,4 @@ func (s *Store) PostByPublicID(ctx context.Context, publicID string) (p Post, fo
 		return Post{}, false, err
 	}
 	return p, true, nil
-}
-
-// RemovePost is the admin's removal: the post stays in the database (so the
-// thread and its comments survive) but is hidden from everyone else.
-func (s *Store) RemovePost(ctx context.Context, publicID string) error {
-	_, err := s.db.Exec(ctx,
-		`UPDATE posts SET removed_at = now() WHERE public_id = $1 AND removed_at IS NULL`, publicID)
-	return err
 }

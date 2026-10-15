@@ -79,6 +79,8 @@ type commentNode struct {
 	Vote          voteWidget
 	CanEdit       bool   // the viewer wrote it and the edit window is open
 	EditLeft      string // "7 minutes", for the edit link
+	CanReport     bool
+	RemovedAs     string // for the admin: why it was removed ("spam", "hidden by reports")
 
 	// used while building and sorting, not by templates
 	id, parentID int64
@@ -121,9 +123,10 @@ func newCommentNode(c store.Comment, o treeOptions) *commentNode {
 	case c.Deleted:
 		n.hidden, n.Placeholder = true, "[deleted]"
 	case c.Removed && !o.isAdmin:
-		n.hidden, n.Placeholder = true, "[removed]"
+		n.hidden, n.Placeholder = true, removedText(c.RemovalReason)
 	case c.Removed && o.isAdmin:
 		n.AdminSeesGone = true
+		n.RemovedAs = strings.Trim(removedText(c.RemovalReason), "[]")
 	}
 
 	if n.hidden {
@@ -142,6 +145,7 @@ func newCommentNode(c store.Comment, o treeOptions) *commentNode {
 	n.CanReply = o.canComment && !c.Deleted && !c.Removed
 	if !n.hidden {
 		n.CanEdit, n.EditLeft = canEdit(o.viewer, c.Author, c.AuthorDeleted, c.Removed || c.Deleted, c.CreatedAt)
+		n.CanReport = o.viewer.canReport(c.Author, c.AuthorDeleted, c.Removed || c.Deleted || o.postClosed)
 		n.Vote = o.viewer.widget("comment", c.PublicID, c.Upvotes-c.Downvotes, o.myVotes[c.ID],
 			c.Author, c.AuthorDeleted, c.Removed || c.Deleted || o.postClosed, true)
 	}
@@ -499,7 +503,7 @@ func (s *Server) treeOptionsFor(r *http.Request, post store.Post, sortMode strin
 	o := treeOptions{
 		sort:       sortMode,
 		postID:     post.PublicID,
-		canComment: loggedIn && !post.Removed && !post.Deleted,
+		canComment: loggedIn && u.Suspension == nil && !post.Removed && !post.Deleted,
 		isAdmin:    u.IsAdmin,
 		rootID:     rootID,
 		postClosed: post.Removed || post.Deleted,
@@ -552,9 +556,14 @@ func (s *Server) handleRemoveComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.RemoveComment(r.Context(), c.PublicID); err != nil {
+	reason, ok := removalReason(w, r)
+	if !ok {
+		return
+	}
+	if err := s.store.Remove(r.Context(), store.Item{PostID: post.PublicID, CommentID: c.PublicID}, reason); err != nil {
 		serverError(w, err)
 		return
 	}
+	s.refreshReports()
 	http.Redirect(w, r, "/p/"+post.PublicID+"#c-"+c.PublicID, http.StatusSeeOther)
 }

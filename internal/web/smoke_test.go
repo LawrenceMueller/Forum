@@ -31,7 +31,7 @@ func TestSmokeEveryPage(t *testing.T) {
 	post := s.post(t, author, "A post worth reading")
 	cid := s.comment(t, post, reader, "A comment worth reading")
 	removed := s.post(t, author, "A removed post")
-	if err := testStore.RemovePost(ctx, removed.PublicID); err != nil {
+	if err := testStore.Remove(ctx, store.Item{PostID: removed.PublicID}, "spam"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -73,6 +73,8 @@ func TestSmokeEveryPage(t *testing.T) {
 		{"/login?notice=password-changed", nil, 200, "page"},
 		{"/recover", nil, 200, "page"},
 		{"/goodbye", nil, 200, "page"},
+		{"/rules", nil, 200, "page"},
+		{"/modlog", nil, 200, "page"},
 		{"/robots.txt", nil, 200, "other"},
 		{"/static/css/style.css", nil, 200, "other"},
 
@@ -89,12 +91,18 @@ func TestSmokeEveryPage(t *testing.T) {
 		{c + "/reply", reader, 200, "page"},
 		{c + "/edit", reader, 200, "page"}, // reader wrote the comment
 		{p + "/edit", author, 200, "page"},
+		{p + "/report", reader, 200, "page"},
+		{c + "/report", author, 200, "page"},
 
 		// The admin's views, including what only the admin sees.
 		{p, boss, 200, "page"},
 		{"/p/" + removed.PublicID, boss, 200, "page"},
 		{"/account", boss, 200, "page"},
 		{"/admin/tags", boss, 200, "page"},
+		{"/admin/reports", boss, 200, "page"},
+		{"/admin/users/blue-humming-otter", boss, 200, "page"},
+		{"/account/suspension", reader, 303, "other"}, // not suspended: back to the account page
+		{"/modlog", boss, 200, "page"},
 		{"/admin/tags?q=bread", boss, 200, "page"},
 		{"/admin/tags/bread", boss, 200, "page"},
 		{"/admin/tags/question", boss, 200, "page"}, // a format: no parents section
@@ -102,6 +110,8 @@ func TestSmokeEveryPage(t *testing.T) {
 
 		// Admin pages don't exist for anyone else.
 		{"/admin/tags", reader, 404, "other"},
+		{"/admin/reports", reader, 404, "other"},
+		{"/admin/users/blue-humming-otter", reader, 404, "other"},
 		{"/admin/tags", nil, 404, "other"},
 
 		// Logged out visitors are sent to log in.
@@ -158,7 +168,7 @@ func TestSmokeEveryPage(t *testing.T) {
 
 	// A removed post shows its title only to the admin.
 	expectMissing(t, "removed post, logged out", s.get("/p/"+removed.PublicID, nil), "A removed post")
-	expectContains(t, "removed post, logged out", s.get("/p/"+removed.PublicID, nil), "[removed]")
+	expectContains(t, "removed post, logged out", s.get("/p/"+removed.PublicID, nil), "[removed: spam]")
 	expectContains(t, "removed post, admin", s.get("/p/"+removed.PublicID, boss), "A removed post")
 }
 

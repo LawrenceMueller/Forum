@@ -180,8 +180,8 @@ func TestAdminEndpointsHideFromEveryoneElse(t *testing.T) {
 	cid := s.comment(t, post, author, "Remove me too")
 	p := "/p/" + post.PublicID
 
-	postForm := form("form_token", s.token(formRemovePost))
-	commentForm := form("form_token", s.token(formRemoveComment))
+	postForm := form("reason", "spam", "form_token", s.token(formRemovePost))
+	commentForm := form("reason", "spam", "form_token", s.token(formRemoveComment))
 
 	// To anyone but the admin, these addresses are simply not there.
 	for _, u := range []*testUser{nil, author} {
