@@ -241,17 +241,17 @@ func (s *Server) handleVote(w http.ResponseWriter, r *http.Request) {
 	if note == "" && u.Shadowbanned {
 		// A spam bot's vote is dropped without a word: it gets the arrows
 		// it expects, and nothing is stored or counted.
-		if score, mine, err = s.store.VoteState(ctx, target, id, viewer.voter); err != nil {
+		// (Only the score is read; the bot's "vote" is whatever it clicked.)
+		if score, _, err = s.store.VoteState(ctx, target, id, viewer.voter); err != nil {
 			serverError(w, err)
 			return
 		}
-		mine = dir
 		if !htmx {
 			http.Redirect(w, r, back, http.StatusSeeOther)
 			return
 		}
 		s.renderFragment(w, "postpage.html", "votes", voteWidget{
-			Kind: kind, ID: id, Score: score + dir, Mine: mine, CanVote: true, LoggedIn: true,
+			Kind: kind, ID: id, Score: score + dir, Mine: dir, CanVote: true, LoggedIn: true,
 			Token: viewer.token, Back: back, Inline: r.PostForm.Get("inline") == "1",
 		})
 		return
