@@ -8,6 +8,7 @@
   <p class="lede">Joined {{.Account.CreatedAt.Format "2006-01-02"}}
     {{if .Account.DeletedAt}}· <strong>deleted {{.Account.DeletedAt.Format "2006-01-02"}}</strong>{{end}}
     {{if .Account.IsAdmin}}· the admin{{end}}
+    {{if .Account.Shadowban}}· <strong>shadowbanned {{.Account.Shadowban.Format "2006-01-02"}}</strong>{{end}}
     · {{.Account.Posts}} posts · {{.Account.Comments}} comments · {{.Account.Removed}} removed by you</p>
 
   {{if .Notice}}<div class="note" role="status"><p>{{.Notice}}</p></div>{{end}}
@@ -59,6 +60,50 @@
       <p class="hint">They can still read and delete their own things, and appeal once. What they wrote stays up.</p>
       <button class="button button-danger" type="submit">Suspend</button>
     </form>
+  </section>
+  {{end}}
+
+  {{if .CanSuspend}}
+  <section class="panel panel-danger">
+    <h2>Clean up</h2>
+    <p>Removes everything this account has posted, with one reason, and withdraws every vote it cast
+      (scores are corrected). Its reports are closed. It doesn't suspend the account; do that above.</p>
+    <form class="form form-danger" method="post" action="/admin/users/{{.Account.Username}}/cleanup">
+      {{template "formguard" .FormToken}}
+      <div class="field">
+        <label for="cleanup-reason">Reason</label>
+        <select id="cleanup-reason" name="reason" required>
+          <option value="">why?</option>
+          {{range .Reasons}}<option value="{{.Key}}">{{.Label}}</option>{{end}}
+        </select>
+      </div>
+      <label class="ack"><input type="checkbox" name="confirm" value="1" required>
+        Remove all {{.Account.Posts}} posts and {{.Account.Comments}} comments</label>
+      <button class="button button-danger" type="submit">Clean up</button>
+    </form>
+  </section>
+
+  <section class="panel panel-danger">
+    <h2>Shadowban</h2>
+    {{if .Account.Shadowban}}
+    <p>On since {{.Account.Shadowban.Format "2006-01-02"}}. They see what they post; nobody else does.</p>
+    <form class="inline-form" method="post" action="/admin/users/{{.Account.Username}}/shadowban">
+      {{template "formguard" .FormToken}}
+      <input type="hidden" name="action" value="off">
+      <button class="button" type="submit">Lift the shadowban</button>
+    </form>
+    {{else}}
+    <p><strong>For obvious spam bots only.</strong> From now on, what they post is seen by them alone, and
+      their votes and reports go nowhere, without them being told. Their votes so far are withdrawn.
+      Never use this on a person: suspend them instead.</p>
+    <form class="form form-danger" method="post" action="/admin/users/{{.Account.Username}}/shadowban">
+      {{template "formguard" .FormToken}}
+      <input type="hidden" name="action" value="on">
+      <label class="ack"><input type="checkbox" name="confirm" value="1" required>
+        This account is a spam bot</label>
+      <button class="button button-danger" type="submit">Shadowban</button>
+    </form>
+    {{end}}
   </section>
   {{end}}
 

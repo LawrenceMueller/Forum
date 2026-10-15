@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestReportRules(t *testing.T) {
@@ -188,5 +189,38 @@ func TestReportQueueOrder(t *testing.T) {
 	}
 	if !q[0].Serious || q[1].Serious {
 		t.Error("only the illegal-content report is serious")
+	}
+}
+
+func TestBlocklistAndDuplicates(t *testing.T) {
+	st := freshDB(t)
+	if err := st.BlockDomain(ctx, "spam.example", "watches"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.BlockDomain(ctx, "spam.example", ""); !errors.Is(err, ErrDomainBlocked) {
+		t.Errorf("blocking twice gave %v", err)
+	}
+	expectConstraint(t, st, "blocked_domain_format", `INSERT INTO blocked_domains (domain) VALUES ('Not A Domain')`)
+	if list, _ := st.BlockedDomains(ctx); len(list) != 1 || list[0].Note != "watches" {
+		t.Errorf("blocklist = %+v", list)
+	}
+	if err := st.UnblockDomain(ctx, "spam.example"); err != nil {
+		t.Fatal(err)
+	}
+
+	me := mustUser(t, st, "blue-humming-otter")
+	other := mustUser(t, st, "red-baking-hare")
+	p := mustPost(t, st, me, "Same")
+	hash := ContentHash(p.Title, p.URL, "body of Same")
+	mine, others, err := st.Duplicates(ctx, false, me, hash, time.Hour)
+	if err != nil || !mine || others != 0 {
+		t.Errorf("own duplicate: mine %v, others %d, %v", mine, others, err)
+	}
+	if mine, others, _ := st.Duplicates(ctx, false, other, hash, time.Hour); mine || others != 1 {
+		t.Errorf("seen from another account: mine %v, others %d", mine, others)
+	}
+	exec(t, st, `UPDATE posts SET created_at = now() - interval '2 hours'`)
+	if mine, _, _ := st.Duplicates(ctx, false, me, hash, time.Hour); mine {
+		t.Error("an old post shouldn't count inside a 1-hour window")
 	}
 }

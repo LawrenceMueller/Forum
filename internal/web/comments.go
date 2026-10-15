@@ -119,14 +119,21 @@ func newCommentNode(c store.Comment, o treeOptions) *commentNode {
 		created:       c.CreatedAt,
 	}
 
+	// A shadowbanned author sees their own comments as if they were up.
+	mineShadowed := ownShadow(o.viewer.user, c.Author, c.AuthorDeleted, c.Removed, c.RemovalReason)
 	switch {
 	case c.Deleted:
 		n.hidden, n.Placeholder = true, "[deleted]"
+	case mineShadowed && !o.isAdmin:
+		// shown normally
 	case c.Removed && !o.isAdmin:
 		n.hidden, n.Placeholder = true, removedText(c.RemovalReason)
 	case c.Removed && o.isAdmin:
 		n.AdminSeesGone = true
-		n.RemovedAs = strings.Trim(removedText(c.RemovalReason), "[]")
+		n.RemovedAs = adminRemovedText(c.RemovalReason)
+		if c.Erased {
+			n.RemovedAs += ", text erased after 30 days"
+		}
 	}
 
 	if n.hidden {
@@ -142,7 +149,7 @@ func newCommentNode(c store.Comment, o treeOptions) *commentNode {
 		}
 	}
 
-	n.CanReply = o.canComment && !c.Deleted && !c.Removed
+	n.CanReply = o.canComment && !c.Deleted && (!c.Removed || mineShadowed)
 	if !n.hidden {
 		n.CanEdit, n.EditLeft = canEdit(o.viewer, c.Author, c.AuthorDeleted, c.Removed || c.Deleted, c.CreatedAt)
 		n.CanReport = o.viewer.canReport(c.Author, c.AuthorDeleted, c.Removed || c.Deleted || o.postClosed)
@@ -410,7 +417,20 @@ func (s *Server) handleComment(w http.ResponseWriter, r *http.Request) {
 		errs = append(errs, "Comments can be up to "+strconv.Itoa(maxCommentLen)+" characters.")
 	}
 	if len(errs) == 0 {
-		if ok, wait := s.limits.commenting.allow("user:" + strconv.FormatInt(u.ID, 10)); !ok {
+		errs = append(errs, s.linkProblems(u, "", body)...) // probation, blocklist
+	}
+	if len(errs) == 0 {
+		problem, err := s.duplicateProblem(ctx, true, u, store.ContentHash("", "", body), utf8.RuneCountInString(body))
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		if problem != "" {
+			errs = append(errs, problem)
+		}
+	}
+	if len(errs) == 0 {
+		if ok, wait := s.commentingLimiter(u).allow("user:" + strconv.FormatInt(u.ID, 10)); !ok {
 			errs = append(errs, "You've commented a lot in a short time. You can comment again in "+friendlyDuration(wait)+".")
 		}
 	}

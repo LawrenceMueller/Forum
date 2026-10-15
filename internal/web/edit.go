@@ -142,6 +142,9 @@ func (s *Server) handleEditPost(w http.ResponseWriter, r *http.Request) {
 	errs = append(errs, validatePost(post.Title, post.URL, body)...)
 	errs = append(errs, tagProblems...)
 	if len(errs) == 0 {
+		errs = append(errs, s.linkProblems(u, "", body)...) // the link itself can't change
+	}
+	if len(errs) == 0 {
 		if msg := s.editingAllowed(u.ID); msg != "" {
 			errs = append(errs, msg)
 		}
@@ -276,6 +279,9 @@ func (s *Server) handleEditComment(w http.ResponseWriter, r *http.Request) {
 		case n > maxCommentLen:
 			problem = "Comments can be up to " + strconv.Itoa(maxCommentLen) + " characters."
 		}
+	}
+	if problem == "" {
+		problem = strings.Join(s.linkProblems(u, "", body), " ") // probation, blocklist
 	}
 	if problem == "" {
 		problem = s.editingAllowed(u.ID)

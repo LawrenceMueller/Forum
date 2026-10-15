@@ -59,8 +59,24 @@ func removedText(reason string) string {
 		return "[removed]" // removed before reasons were recorded
 	case "held":
 		return "[hidden while reports are reviewed]"
+	case "shadow":
+		return "[removed: spam]" // a shadowbanned account's; see cleanup.go in the store
 	}
 	return "[removed: " + reasonLabel(reason) + "]"
+}
+
+// adminRemovedText is how the admin sees why something is gone.
+func adminRemovedText(reason string) string {
+	if reason == "shadow" {
+		return "silenced (shadowbanned account)"
+	}
+	return strings.Trim(removedText(reason), "[]")
+}
+
+// ownShadow reports whether the viewer is looking at their own shadowed
+// post or comment, which they see as if it were up.
+func ownShadow(viewer store.User, author string, authorDeleted, removed bool, reason string) bool {
+	return removed && reason == "shadow" && !authorDeleted && viewer.Username != "" && author == viewer.Username
 }
 
 type reasonOption struct {
@@ -203,8 +219,9 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		page.Errors = append(page.Errors, "Say what's wrong in the note.")
 	}
 
-	if len(page.Errors) == 0 {
-		u, _ := userFrom(r.Context())
+	if u, _ := userFrom(r.Context()); len(page.Errors) == 0 && u.Shadowbanned {
+		page.Done = true // a spam bot's report goes nowhere
+	} else if len(page.Errors) == 0 {
 		held, err := s.store.Report(r.Context(), store.NewReport{
 			Item: it, Reporter: s.voters.Reporter(u.ID), Reason: page.Reason, Note: page.Note,
 		})
@@ -265,6 +282,7 @@ type appealRow struct {
 var queueNotices = map[string]string{
 	"removed":   "Removed. Its reports are closed.",
 	"suspended": "Removed, and its author suspended. The reports are closed.",
+	"cleaned":   "Removed, along with everything else its author posted; their votes are withdrawn.",
 	"dismissed": "Dismissed. Its reports are closed.",
 	"lifted":    "Suspension lifted.",
 	"kept":      "The suspension stands; they'll see their appeal was read.",
@@ -314,7 +332,7 @@ func (s *Server) renderQueue(w http.ResponseWriter, r *http.Request, start time.
 		case q.Deleted:
 			row.Status = "deleted by its author"
 		case q.Removed:
-			row.Status = strings.Trim(removedText(q.RemovalReason), "[]")
+			row.Status = adminRemovedText(q.RemovalReason)
 		}
 		for _, key := range store.ReportReasons {
 			if n := q.Reasons[key]; n > 0 {
@@ -380,6 +398,23 @@ func (s *Server) handleModerate(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			done = "suspended"
+		}
+		// "and everything else they posted", when ticked.
+		if err == nil && r.PostForm.Get("cleanup") == "1" {
+			acct, aerr := s.store.AccountByName(r.Context(), r.PostForm.Get("author"))
+			if aerr != nil {
+				s.renderQueue(w, r, start, []string{"Removed, but couldn't find the author to clean up after."})
+				return
+			}
+			if _, cerr := s.store.Cleanup(r.Context(), acct.ID, s.voters.Voter(acct.ID), reason); cerr != nil {
+				if errors.Is(cerr, store.ErrCantSuspendAdmin) {
+					s.renderQueue(w, r, start, []string{"Removed. (The admin's own things aren't cleaned up.)"})
+					return
+				}
+				serverError(w, cerr)
+				return
+			}
+			done = "cleaned"
 		}
 	default:
 		http.Error(w, "bad form", http.StatusBadRequest)
@@ -464,6 +499,12 @@ func (s *Server) handleModLog(w http.ResponseWriter, r *http.Request) {
 			}
 		case "keep":
 			row.What = "Appeal turned down: suspension stands"
+		case "cleanup":
+			row.What = "Account cleaned up (" + reasonLabel(e.Reason) + "): " + e.Detail
+		case "shadowban":
+			row.What = "Spam account silenced"
+		case "unshadowban":
+			row.What = "Silencing lifted"
 		case "remove":
 			row.What = kind + " removed: " + reasonLabel(e.Reason)
 		case "hold":

@@ -75,6 +75,7 @@
         <option value="">and leave the author be</option>
         {{range $.Lengths}}<option value="{{.Days}}">and suspend the author {{if .Days}}for {{end}}{{.Label}}</option>{{end}}
       </select>
+      <label class="queue-check"><input type="checkbox" name="cleanup" value="1"> and everything else they posted</label>
       {{end}}
       <button class="button button-danger" type="submit" name="action" value="remove">Remove</button>
     </form>

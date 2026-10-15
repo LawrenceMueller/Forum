@@ -168,3 +168,30 @@ func (s *site) reply(t *testing.T, p store.Post, parent string, author *testUser
 	}
 	return cid
 }
+
+func TestErasedItemsForTheAdmin(t *testing.T) {
+	s := newSite(t)
+	author := s.user(t, "blue-humming-otter")
+	boss := admin(t, s.user(t, "silver-sleeping-fox"))
+	post := s.post(t, author, "Old spam")
+	cid := s.comment(t, post, author, "old spam comment")
+	s.reply(t, post, cid, author, "a reply that keeps it in place")
+	for _, it := range []store.Item{{PostID: post.PublicID, CommentID: cid}, {PostID: post.PublicID}} {
+		if err := testStore.Remove(ctx, it, "spam"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sqlExec(t, `UPDATE posts SET removed_at = now() - interval '31 days'`)
+	sqlExec(t, `UPDATE comments SET removed_at = now() - interval '31 days' WHERE public_id = $1`, cid)
+	if _, err := testStore.Purge(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	page := s.get("/p/"+post.PublicID, boss)
+	expectContains(t, "admin, post", page, "Its text was erased 30 days after removal.")
+	expectContains(t, "admin, comment", page, "removed: spam, text erased after 30 days")
+	expectMissing(t, "admin", page, "Old spam")
+	expectMissing(t, "admin", page, "old spam comment")
+	expectContains(t, "visitor", s.get("/p/"+post.PublicID, nil), "[removed: spam]")
+	expectContains(t, "rules", s.get("/rules", nil), "keeps its text for 30 days")
+}

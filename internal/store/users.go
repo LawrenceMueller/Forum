@@ -21,6 +21,9 @@ type User struct {
 	// Suspension is the account's suspension in force, or nil. Filled in by
 	// UserBySession, so every logged-in request knows.
 	Suspension *Suspension
+
+	// Shadowbanned: a spam bot's account (cleanup.go). Filled in by UserBySession.
+	Shadowbanned bool
 }
 
 // UsernameTaken is the courtesy check used when offering a name.

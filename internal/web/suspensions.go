@@ -208,8 +208,11 @@ type suspensionRow struct {
 }
 
 var adminUserNotices = map[string]string{
-	"suspended": "Suspended.",
-	"lifted":    "Suspension lifted.",
+	"suspended":      "Suspended.",
+	"lifted":         "Suspension lifted.",
+	"cleaned":        "Cleaned up: everything they posted is removed, and their votes are withdrawn.",
+	"shadowbanned":   "Shadowbanned: from now on only they see what they post, and their votes and reports go nowhere.",
+	"unshadowbanned": "Shadowban lifted. What they posted while it was on stays hidden.",
 }
 
 // GET /admin/users/{name} (also /admin/users?name= from the lookup form)
@@ -417,4 +420,64 @@ func (s *Server) handleAppealDecision(w http.ResponseWriter, r *http.Request) {
 	}
 	s.refreshReports()
 	http.Redirect(w, r, "/admin/reports?done="+done, http.StatusSeeOther)
+}
+
+// ---- cleanup and shadowbans (moderation slice 3) ----
+
+// POST /admin/users/{name}/cleanup (reason=, confirm=1)
+func (s *Server) handleAdminCleanup(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	acct, ok := s.adminUserForm(w, r, start)
+	if !ok {
+		return
+	}
+	reason := r.PostForm.Get("reason")
+	switch {
+	case !slices.Contains(store.RemovalReasons, reason):
+		s.renderAdminUser(w, r, start, []string{"Pick a reason for the cleanup."})
+		return
+	case r.PostForm.Get("confirm") != "1":
+		s.renderAdminUser(w, r, start, []string{"Tick the box to confirm the cleanup."})
+		return
+	}
+	_, err := s.store.Cleanup(r.Context(), acct.ID, s.voters.Voter(acct.ID), reason)
+	if errors.Is(err, store.ErrCantSuspendAdmin) {
+		s.renderAdminUser(w, r, start, []string{"The admin's own things can't be cleaned up this way."})
+		return
+	}
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	s.refreshStats()
+	s.refreshReports()
+	http.Redirect(w, r, "/admin/users/"+acct.Username+"?done=cleaned", http.StatusSeeOther)
+}
+
+// POST /admin/users/{name}/shadowban (action=on with confirm=1, or action=off)
+func (s *Server) handleAdminShadowban(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	acct, ok := s.adminUserForm(w, r, start)
+	if !ok {
+		return
+	}
+	on := r.PostForm.Get("action") == "on"
+	if on && r.PostForm.Get("confirm") != "1" {
+		s.renderAdminUser(w, r, start, []string{"Tick the box to confirm this account is a spam bot."})
+		return
+	}
+	err := s.store.SetShadowban(r.Context(), acct.ID, s.voters.Voter(acct.ID), on)
+	if errors.Is(err, store.ErrCantSuspendAdmin) {
+		s.renderAdminUser(w, r, start, []string{"The admin account can't be shadowbanned."})
+		return
+	}
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	done := "unshadowbanned"
+	if on {
+		done = "shadowbanned"
+	}
+	http.Redirect(w, r, "/admin/users/"+acct.Username+"?done="+done, http.StatusSeeOther)
 }

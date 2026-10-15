@@ -42,6 +42,7 @@ type Post struct {
 	Deleted        bool   // by its author
 	Removed        bool   // by the admin, or held by reports
 	RemovalReason  string // why, when removed: "spam", "held", ... ("" if unrecorded)
+	Erased         bool   // removed long enough ago that its words are gone (retention.go)
 }
 
 // Public IDs are 8 characters of lowercase base32 (a-z, 2-7): 40 random
@@ -125,6 +126,15 @@ func (s *Store) createPostWithID(ctx context.Context, p NewPost, publicID string
 	if err := refreshTagPosts(ctx, tx, []int64{postID}); err != nil {
 		return err
 	}
+	// A shadowbanned account's post arrives already removed (cleanup.go).
+	if shadow, err := shadowbanned(ctx, tx, p.AuthorID); err != nil {
+		return err
+	} else if shadow {
+		if _, err := tx.Exec(ctx, `UPDATE posts SET removed_at = now(), removal_reason = $2 WHERE id = $1`,
+			postID, shadowReason); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
 }
 
@@ -136,7 +146,7 @@ func (s *Store) PostByPublicID(ctx context.Context, publicID string) (p Post, fo
 		       u.username, u.deleted_at IS NOT NULL,
 		       p.created_at, p.edited_at, p.score, p.comment_count,
 		       coalesce(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}'),
-		       p.deleted_at IS NOT NULL, p.removed_at IS NOT NULL, coalesce(p.removal_reason, '')
+		       p.deleted_at IS NOT NULL, p.removed_at IS NOT NULL, coalesce(p.removal_reason, ''), p.erased_at IS NOT NULL
 		FROM posts p
 		JOIN users u ON u.id = p.author_id
 		LEFT JOIN post_tags pt ON pt.post_id = p.id
@@ -147,7 +157,7 @@ func (s *Store) PostByPublicID(ctx context.Context, publicID string) (p Post, fo
 	).Scan(&p.ID, &p.PublicID, &p.Title, &p.URL, &p.Body,
 		&p.Author, &p.AuthorDeleted,
 		&p.CreatedAt, &p.EditedAt, &p.Score, &p.CommentCount,
-		&p.Tags, &p.Deleted, &p.Removed, &p.RemovalReason)
+		&p.Tags, &p.Deleted, &p.Removed, &p.RemovalReason, &p.Erased)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Post{}, false, nil

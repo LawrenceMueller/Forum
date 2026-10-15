@@ -41,49 +41,54 @@ type Server struct {
 	stats      siteStats
 	tagTree    atomic.Pointer[tags.Tree] // the tag system, in memory (tags.go)
 	bodies     *markdown.Cache           // rendered post and comment texts
+	blocked    atomic.Pointer[[]string]  // the domain blocklist (spamchecks.go)
 }
 
 // rateLimits are per visitor (per IP). The numbers are "one token refills
 // every X, bucket holds Y": Y requests at once, then one per X.
 type rateLimits struct {
-	names        *limiter // loading the sign-up page and rerolling (abuse guard)
-	rerolls      *limiter // the reroll allowance shown on the sign-up page
-	signup       *limiter // submitting the sign-up form (typos and all)
-	accounts     *limiter // actually creating an account
-	login        *limiter // submitting the login form
-	recover      *limiter // submitting the recovery form
-	submit       *limiter // submitting the new-post form, per IP
-	posting      *limiter // actually publishing a post, per ACCOUNT (key "user:<id>")
-	comment      *limiter // submitting the comment form, per IP
-	commenting   *limiter // actually publishing a comment, per ACCOUNT
-	vote         *limiter // vote clicks, per IP
-	voting       *limiter // vote clicks, per ACCOUNT: the fast limit
-	votingDaily  *limiter // per ACCOUNT: the daily budget
-	votingAuthor *limiter // per ACCOUNT per AUTHOR: votes on one person's content
-	editing      *limiter // saving edits to posts and comments, per ACCOUNT
-	report       *limiter // sending reports, per IP (accounts also have a daily cap)
-	suggest      *limiter // topic suggestions while typing, per IP
+	names         *limiter // loading the sign-up page and rerolling (abuse guard)
+	rerolls       *limiter // the reroll allowance shown on the sign-up page
+	signup        *limiter // submitting the sign-up form (typos and all)
+	accounts      *limiter // actually creating an account
+	login         *limiter // submitting the login form
+	recover       *limiter // submitting the recovery form
+	submit        *limiter // submitting the new-post form, per IP
+	posting       *limiter // actually publishing a post, per ACCOUNT (key "user:<id>")
+	postingNew    *limiter // the same, during probation (an account's first 3 days)
+	comment       *limiter // submitting the comment form, per IP
+	commenting    *limiter // actually publishing a comment, per ACCOUNT
+	commentingNew *limiter // the same, during probation
+	vote          *limiter // vote clicks, per IP
+	voting        *limiter // vote clicks, per ACCOUNT: the fast limit
+	votingDaily   *limiter // per ACCOUNT: the daily budget
+	votingAuthor  *limiter // per ACCOUNT per AUTHOR: votes on one person's content
+	editing       *limiter // saving edits to posts and comments, per ACCOUNT
+	report        *limiter // sending reports, per IP (accounts also have a daily cap)
+	suggest       *limiter // topic suggestions while typing, per IP
 }
 
 func newRateLimits() rateLimits {
 	return rateLimits{
-		names:        newLimiter("names", 500*time.Millisecond, 30),
-		rerolls:      newLimiter("rerolls", 6*time.Minute, 10), // 10 rerolls, one more every 6 minutes
-		signup:       newLimiter("signup", 6*time.Second, 10),
-		accounts:     newLimiter("accounts", 20*time.Minute, 3),
-		login:        newLimiter("login", 6*time.Second, 10),
-		recover:      newLimiter("recover", time.Minute, 5),
-		submit:       newLimiter("submit", 6*time.Second, 10),
-		posting:      newLimiter("posting", 5*time.Minute, 5), // 5 posts at once, then one per 5 minutes
-		comment:      newLimiter("comment", 3*time.Second, 20),
-		commenting:   newLimiter("commenting", 30*time.Second, 10),      // 10 at once, then one per 30s
-		vote:         newLimiter("vote", 3*time.Second, 30),             // 30 at once, then one per 3s
-		voting:       newLimiter("voting", 3*time.Second, 10),           // 10 at once, then one per 3s
-		votingDaily:  newLimiter("voting-daily", 24*time.Hour/250, 250), // 250 a day, rolling
-		votingAuthor: newLimiter("voting-author", 24*time.Hour/10, 10),  // 10 a day per author
-		editing:      newLimiter("editing", 10*time.Second, 20),         // 20 at once, then one per 10s
-		report:       newLimiter("report", 30*time.Second, 10),          // 10 at once, then one per 30s
-		suggest:      newLimiter("suggest", 250*time.Millisecond, 40),   // brisk typing, not a scraper
+		names:         newLimiter("names", 500*time.Millisecond, 30),
+		rerolls:       newLimiter("rerolls", 6*time.Minute, 10), // 10 rerolls, one more every 6 minutes
+		signup:        newLimiter("signup", 6*time.Second, 10),
+		accounts:      newLimiter("accounts", 20*time.Minute, 3),
+		login:         newLimiter("login", 6*time.Second, 10),
+		recover:       newLimiter("recover", time.Minute, 5),
+		submit:        newLimiter("submit", 6*time.Second, 10),
+		posting:       newLimiter("posting", 5*time.Minute, 5),      // 5 posts at once, then one per 5 minutes
+		postingNew:    newLimiter("posting-new", 30*time.Minute, 2), // probation: 2 at once, then one per 30 minutes
+		comment:       newLimiter("comment", 3*time.Second, 20),
+		commenting:    newLimiter("commenting", 30*time.Second, 10),      // 10 at once, then one per 30s
+		commentingNew: newLimiter("commenting-new", 2*time.Minute, 5),    // probation: 5 at once, then one per 2 minutes
+		vote:          newLimiter("vote", 3*time.Second, 30),             // 30 at once, then one per 3s
+		voting:        newLimiter("voting", 3*time.Second, 10),           // 10 at once, then one per 3s
+		votingDaily:   newLimiter("voting-daily", 24*time.Hour/250, 250), // 250 a day, rolling
+		votingAuthor:  newLimiter("voting-author", 24*time.Hour/10, 10),  // 10 a day per author
+		editing:       newLimiter("editing", 10*time.Second, 20),         // 20 at once, then one per 10s
+		report:        newLimiter("report", 30*time.Second, 10),          // 10 at once, then one per 30s
+		suggest:       newLimiter("suggest", 250*time.Millisecond, 40),   // brisk typing, not a scraper
 	}
 }
 
@@ -120,6 +125,9 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := s.loadTags(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.loadBlocklist(ctx); err != nil {
 		return nil, err
 	}
 
@@ -197,6 +205,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /admin/reports", noStore(s.adminOnly(s.handleQueue)))
 	mux.Handle("POST /admin/reports", noStore(s.adminOnly(s.handleModerate)))
 	mux.HandleFunc("GET /modlog", s.handleModLog)
+	mux.Handle("GET /admin/domains", noStore(s.adminOnly(s.handleDomains)))
+	mux.Handle("POST /admin/domains", noStore(s.adminOnly(s.handleDomainChange)))
 
 	// Suspensions and appeals (suspensions.go). Writing routes above are
 	// wrapped in notSuspended.
@@ -206,6 +216,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /admin/users/{name}", noStore(s.adminOnly(s.handleAdminUser)))
 	mux.Handle("POST /admin/users/{name}/suspend", noStore(s.adminOnly(s.handleAdminSuspend)))
 	mux.Handle("POST /admin/users/{name}/lift", noStore(s.adminOnly(s.handleAdminLift)))
+	mux.Handle("POST /admin/users/{name}/cleanup", noStore(s.adminOnly(s.handleAdminCleanup)))
+	mux.Handle("POST /admin/users/{name}/shadowban", noStore(s.adminOnly(s.handleAdminShadowban)))
 	mux.Handle("POST /admin/appeals", noStore(s.adminOnly(s.handleAppealDecision)))
 	mux.HandleFunc("GET /rules", s.handleRules)
 	mux.Handle("GET /p/{id}/c/{cid}/reply", noStore(s.notSuspended(s.handleReplyForm)))

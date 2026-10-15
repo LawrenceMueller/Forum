@@ -32,6 +32,7 @@ type Comment struct {
 	Deleted       bool
 	Removed       bool   // by the admin, or held by reports
 	RemovalReason string // why, when removed ("" if unrecorded)
+	Erased        bool   // removed long enough ago that its words are gone (retention.go)
 }
 
 // maxCommentsLoaded caps how many comments one page load reads. Far above
@@ -42,13 +43,13 @@ const commentColumns = `
 	c.id, coalesce(c.parent_id, 0), c.public_id, c.post_id,
 	u.username, u.deleted_at IS NOT NULL,
 	c.body, c.created_at, c.edited_at, c.upvotes, c.downvotes, c.depth,
-	c.deleted_at IS NOT NULL, c.removed_at IS NOT NULL, coalesce(c.removal_reason, '')`
+	c.deleted_at IS NOT NULL, c.removed_at IS NOT NULL, coalesce(c.removal_reason, ''), c.erased_at IS NOT NULL`
 
 func scanComment(row pgx.Row, c *Comment) error {
 	return row.Scan(&c.ID, &c.ParentID, &c.PublicID, &c.PostID,
 		&c.Author, &c.AuthorDeleted,
 		&c.Body, &c.CreatedAt, &c.EditedAt, &c.Upvotes, &c.Downvotes, &c.Depth,
-		&c.Deleted, &c.Removed, &c.RemovalReason)
+		&c.Deleted, &c.Removed, &c.RemovalReason, &c.Erased)
 }
 
 // CommentsForPost loads every comment on a post, oldest first. The tree is
@@ -130,12 +131,22 @@ func (s *Store) createCommentOnce(ctx context.Context, c NewComment, publicID, h
 	}
 	defer tx.Rollback(ctx)
 
+	// A shadowbanned account's comment arrives already removed, and counts
+	// for nothing (cleanup.go). It may still comment where it alone can see:
+	// under its own shadowed post or comment.
+	shadow, err := shadowbanned(ctx, tx, c.AuthorID)
+	if err != nil {
+		return 0, err
+	}
+
 	// FOR UPDATE locks the post row until we commit, so two comments
 	// arriving at once can't both read the same count and lose one.
 	var locked bool
-	err = tx.QueryRow(ctx,
-		`SELECT removed_at IS NOT NULL OR deleted_at IS NOT NULL FROM posts WHERE id = $1 FOR UPDATE`,
-		c.PostID).Scan(&locked)
+	err = tx.QueryRow(ctx, `
+		SELECT deleted_at IS NOT NULL OR (removed_at IS NOT NULL
+		       AND NOT (removal_reason = 'shadow' AND author_id = $2))
+		FROM posts WHERE id = $1 FOR UPDATE`,
+		c.PostID, c.AuthorID).Scan(&locked)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, ErrPostNotFound
 	}
@@ -153,8 +164,9 @@ func (s *Store) createCommentOnce(ctx context.Context, c NewComment, publicID, h
 		var parentDepth int
 		var gone bool
 		err := tx.QueryRow(ctx, `
-			SELECT id, post_id, depth, removed_at IS NOT NULL OR deleted_at IS NOT NULL
-			FROM comments WHERE public_id = $1`, c.ParentPublicID,
+			SELECT id, post_id, depth, deleted_at IS NOT NULL OR (removed_at IS NOT NULL
+			       AND NOT (removal_reason = 'shadow' AND author_id = $2))
+			FROM comments WHERE public_id = $1`, c.ParentPublicID, c.AuthorID,
 		).Scan(&id, &postID, &parentDepth, &gone)
 		if errors.Is(err, pgx.ErrNoRows) || (err == nil && (postID != c.PostID || gone)) {
 			return 0, ErrParentGone
@@ -166,12 +178,19 @@ func (s *Store) createCommentOnce(ctx context.Context, c NewComment, publicID, h
 		depth = parentDepth + 1
 	}
 
+	var removedAt, reason any // NULL, unless shadowed
+	if shadow {
+		removedAt, reason = time.Now(), shadowReason
+	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO comments (public_id, post_id, parent_id, author_id, depth, body, content_hash)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		publicID, c.PostID, parentID, c.AuthorID, depth, c.Body, hash,
+		INSERT INTO comments (public_id, post_id, parent_id, author_id, depth, body, content_hash, removed_at, removal_reason)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		publicID, c.PostID, parentID, c.AuthorID, depth, c.Body, hash, removedAt, reason,
 	); err != nil {
 		return 0, err
+	}
+	if shadow {
+		return depth, tx.Commit(ctx) // no count, no bump: nobody else can see it
 	}
 
 	if _, err := tx.Exec(ctx, `

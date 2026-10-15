@@ -32,6 +32,7 @@ type submitPage struct {
 	Tags      tagFields
 	Errors    []string
 	FormToken string
+	LinksFrom string // during probation: when links unlock ("" otherwise)
 }
 
 // renderSubmit shows the submit form, keeping whatever was typed so a
@@ -40,6 +41,11 @@ func (s *Server) renderSubmit(w http.ResponseWriter, r *http.Request, start time
 	form.Tags = s.tagFieldsFor(sel)
 	form.basePage = newBasePage(r, "new post").withUp("/", "front page")
 	form.FormToken = s.formToken(formSubmit)
+	if u, ok := userFrom(r.Context()); ok && !u.IsAdmin {
+		if fresh, until := onProbation(u); fresh {
+			form.LinksFrom = until.Format("2006-01-02 15:04")
+		}
+	}
 	form.Generated = time.Since(start)
 	s.render(w, "submit.html", form)
 }
@@ -92,11 +98,25 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	errs = append(errs, validatePost(form.Title, form.URL, form.Body)...)
 	errs = append(errs, tagProblems...)
+	if len(errs) == 0 {
+		errs = append(errs, s.linkProblems(u, form.URL, form.Body)...) // probation, blocklist
+	}
+	if len(errs) == 0 {
+		hash := store.ContentHash(form.Title, normalizeURL(form.URL), form.Body)
+		problem, err := s.duplicateProblem(ctx, false, u, hash, utf8.RuneCountInString(form.Body))
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		if problem != "" {
+			errs = append(errs, problem)
+		}
+	}
 
 	// Per-account limit, checked last so mistakes above don't use it up.
 	// (The per-IP limit on this route is applied in server.go.)
 	if len(errs) == 0 {
-		if ok, wait := s.limits.posting.allow("user:" + strconv.FormatInt(u.ID, 10)); !ok {
+		if ok, wait := s.postingLimiter(u).allow("user:" + strconv.FormatInt(u.ID, 10)); !ok {
 			errs = append(errs, "You've posted a lot recently. You can post again in "+friendlyDuration(wait)+".")
 		}
 	}
@@ -196,6 +216,7 @@ type postView struct {
 	EditLeft      string // "7 minutes", for the edit link
 	RemovedText   string // in its place when removed: "[removed: spam]"
 	Held          bool   // hidden by reports until the admin reviews it
+	Erased        bool   // removed over 30 days ago: its words are gone
 	CanReport     bool
 }
 
@@ -217,6 +238,7 @@ func toPostView(p store.Post, tree *tags.Tree) postView {
 		Href:          "/p/" + p.PublicID,
 		RemovedText:   removedText(p.RemovalReason),
 		Held:          p.RemovalReason == "held",
+		Erased:        p.Erased,
 	}
 	if p.Body != "" {
 		v.BodyHTML = markdown.Render(p.Body)
@@ -285,6 +307,10 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	u, loggedIn := userFrom(r.Context())
+	// A shadowbanned author sees their own post as if it were up.
+	if ownShadow(u, p.Author, p.AuthorDeleted, p.Removed, p.RemovalReason) && !u.IsAdmin {
+		p.Removed, p.RemovalReason = false, ""
+	}
 	sortMode := commentSort(r)
 	opts, err := s.treeOptionsFor(r, p, sortMode, 0, comments)
 	if err != nil {

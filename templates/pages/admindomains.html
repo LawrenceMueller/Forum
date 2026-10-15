@@ -1,0 +1,51 @@
+{{/*
+  admindomains.html: the sites links may not point to. A blocked domain
+  covers its subdomains too. Checked on every new post and comment, and on
+  edits; existing posts are left alone.
+*/}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Blocked sites <span class="admin-badge">admin</span></h1>
+  <p class="lede">Links to these sites (and their subdomains) are refused in new posts, comments and edits.</p>
+
+  {{if .Notice}}<div class="note" role="status"><p>{{.Notice}}</p></div>{{end}}
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  <form class="form" method="post" action="/admin/domains">
+    {{template "formguard" .FormToken}}
+    <input type="hidden" name="action" value="add">
+    <div class="field">
+      <label for="domain">Site</label>
+      <input id="domain" name="domain" type="text" value="{{.Typed}}" required maxlength="300"
+             autocapitalize="none" spellcheck="false" placeholder="example.com">
+    </div>
+    <div class="field">
+      <label for="note">Note <span class="optional">optional, for you: why it's blocked</span></label>
+      <input id="note" name="note" type="text" value="{{.Note}}" maxlength="200">
+    </div>
+    <button class="button" type="submit">Block</button>
+  </form>
+
+  <section class="panel">
+    <h2>{{len .Domains}} blocked</h2>
+    {{if .Domains}}
+    <ul class="admin-list">
+      {{range .Domains}}<li><strong>{{.Domain}}</strong>{{if .Note}} <span class="hint">{{.Note}}</span>{{end}}
+        <span class="hint">since {{.CreatedAt.Format "2006-01-02"}}</span>
+        <form class="inline-form" method="post" action="/admin/domains">
+          {{template "formguard" $.FormToken}}
+          <input type="hidden" name="action" value="remove">
+          <input type="hidden" name="domain" value="{{.Domain}}">
+          <button class="linklike" type="submit">unblock</button>
+        </form></li>
+      {{end}}
+    </ul>
+    {{else}}<p>None yet.</p>{{end}}
+  </section>
+</main>
+{{end}}

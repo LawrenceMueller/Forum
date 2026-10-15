@@ -100,6 +100,7 @@ func TestSmokeEveryPage(t *testing.T) {
 		{"/account", boss, 200, "page"},
 		{"/admin/tags", boss, 200, "page"},
 		{"/admin/reports", boss, 200, "page"},
+		{"/admin/domains", boss, 200, "page"},
 		{"/admin/users/blue-humming-otter", boss, 200, "page"},
 		{"/account/suspension", reader, 303, "other"}, // not suspended: back to the account page
 		{"/modlog", boss, 200, "page"},
@@ -111,6 +112,7 @@ func TestSmokeEveryPage(t *testing.T) {
 		// Admin pages don't exist for anyone else.
 		{"/admin/tags", reader, 404, "other"},
 		{"/admin/reports", reader, 404, "other"},
+		{"/admin/domains", reader, 404, "other"},
 		{"/admin/users/blue-humming-otter", reader, 404, "other"},
 		{"/admin/tags", nil, 404, "other"},
 

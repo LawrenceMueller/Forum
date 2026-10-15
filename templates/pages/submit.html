@@ -23,6 +23,7 @@
       <label for="url">Link <span class="optional">optional</span></label>
       <input id="url" name="url" type="url" value="{{.URL}}" maxlength="2000"
              placeholder="https://" autocapitalize="none" spellcheck="false">
+      {{if .LinksFrom}}<p class="hint">Your account is new, so links (here and in the text) unlock on {{.LinksFrom}}.</p>{{end}}
     </div>
 
     <div class="field">

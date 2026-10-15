@@ -285,7 +285,8 @@ type AccountInfo struct {
 	IsAdmin   bool
 	CreatedAt time.Time
 	DeletedAt *time.Time
-	Posts     int64 // not deleted by them, removed ones included
+	Shadowban *time.Time // when it was shadowbanned; nil if not
+	Posts     int64      // not deleted by them, removed ones included
 	Comments  int64
 	Removed   int64 // posts and comments the admin removed
 }
@@ -294,13 +295,13 @@ type AccountInfo struct {
 func (s *Store) AccountByName(ctx context.Context, name string) (AccountInfo, error) {
 	var a AccountInfo
 	err := s.db.QueryRow(ctx, `
-		SELECT u.id, u.username, u.is_admin, u.created_at, u.deleted_at,
+		SELECT u.id, u.username, u.is_admin, u.created_at, u.deleted_at, u.shadowbanned_at,
 		       (SELECT count(*) FROM posts WHERE author_id = u.id AND deleted_at IS NULL),
 		       (SELECT count(*) FROM comments WHERE author_id = u.id AND deleted_at IS NULL),
 		       (SELECT count(*) FROM posts WHERE author_id = u.id AND removed_at IS NOT NULL AND removal_reason IS DISTINCT FROM 'held')
 		     + (SELECT count(*) FROM comments WHERE author_id = u.id AND removed_at IS NOT NULL AND removal_reason IS DISTINCT FROM 'held')
 		FROM users u WHERE u.username = $1`, name).
-		Scan(&a.ID, &a.Username, &a.IsAdmin, &a.CreatedAt, &a.DeletedAt, &a.Posts, &a.Comments, &a.Removed)
+		Scan(&a.ID, &a.Username, &a.IsAdmin, &a.CreatedAt, &a.DeletedAt, &a.Shadowban, &a.Posts, &a.Comments, &a.Removed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return a, ErrUserNotFound
 	}

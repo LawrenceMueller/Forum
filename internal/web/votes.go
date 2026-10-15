@@ -238,6 +238,24 @@ func (s *Server) handleVote(w http.ResponseWriter, r *http.Request) {
 
 	var score, mine int
 	var err error
+	if note == "" && u.Shadowbanned {
+		// A spam bot's vote is dropped without a word: it gets the arrows
+		// it expects, and nothing is stored or counted.
+		if score, mine, err = s.store.VoteState(ctx, target, id, viewer.voter); err != nil {
+			serverError(w, err)
+			return
+		}
+		mine = dir
+		if !htmx {
+			http.Redirect(w, r, back, http.StatusSeeOther)
+			return
+		}
+		s.renderFragment(w, "postpage.html", "votes", voteWidget{
+			Kind: kind, ID: id, Score: score + dir, Mine: mine, CanVote: true, LoggedIn: true,
+			Token: viewer.token, Back: back, Inline: r.PostForm.Get("inline") == "1",
+		})
+		return
+	}
 	if note == "" {
 		score, mine, err = s.store.Vote(ctx, target, id, viewer.voter, u.ID, dir)
 		switch {

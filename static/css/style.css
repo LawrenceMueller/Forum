@@ -1398,3 +1398,5 @@ a.domain:hover { color: var(--ink); }
 .suspended-banner p { margin: 0; }
 .queue-appeal { border-left: 4px solid var(--sled); }
 .admin-queue .section-title { margin: 1rem 0 0.5rem; }
+.queue-check { font-size: 0.85em; color: var(--muted); }
+.queue-check input { vertical-align: middle; }

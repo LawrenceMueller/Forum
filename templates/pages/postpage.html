@@ -15,7 +15,8 @@
   {{else}}
   <article class="thread-post">
     {{if .Removed}}
-    <div class="errors"><p><strong>{{.RemovedText}}</strong> Hidden from everyone else; you're seeing it because you're the admin.</p></div>
+    <div class="errors"><p><strong>{{.RemovedText}}</strong> Hidden from everyone else; you're seeing it because you're the admin.
+      {{if .Erased}}Its text was erased 30 days after removal.{{end}}</p></div>
     {{end}}
 
     <h1 class="thread-title">

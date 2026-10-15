@@ -16,10 +16,13 @@ import (
 	"database/sql"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/pressly/goose/v3"
+
+	"snowball/internal/store"
 )
 
 func TestMigrationsRoundTrip(t *testing.T) {
@@ -113,4 +116,46 @@ func schema(t *testing.T, db *sql.DB) []string {
 		t.Fatal(err)
 	}
 	return lines
+}
+
+// TestSchemaVersionMatchesMigrations keeps store.SchemaVersion (what the
+// server checks at startup) in step with the newest migration file, and
+// checks a fully migrated database passes that check.
+func TestSchemaVersionMatchesMigrations(t *testing.T) {
+	root, err := Root()
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := filepath.Glob(filepath.Join(root, "migrations", "*.sql"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no migrations found: %v", err)
+	}
+	var newest int64
+	for _, f := range files {
+		n, err := strconv.ParseInt(strings.SplitN(filepath.Base(f), "_", 2)[0], 10, 64)
+		if err != nil {
+			t.Fatalf("%s doesn't start with a number", filepath.Base(f))
+		}
+		newest = max(newest, n)
+	}
+	if newest != store.SchemaVersion {
+		t.Fatalf("the newest migration is %05d but store.SchemaVersion is %05d: bump it in internal/store/schema.go",
+			newest, store.SchemaVersion)
+	}
+
+	if testing.Short() {
+		return
+	}
+	dbURL, err := Prepare("snowball_migrations_test")
+	if err != nil {
+		t.Fatalf("can't set up the database: %v", err)
+	}
+	st, err := store.Open(context.Background(), dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if have, err := st.CheckSchema(context.Background()); err != nil || have != store.SchemaVersion {
+		t.Errorf("CheckSchema on a migrated database: %d, %v", have, err)
+	}
 }

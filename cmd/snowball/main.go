@@ -49,7 +49,15 @@ func main() {
 	}
 	defer st.Close()
 
-	go cleanExpiredSessions(ctx, st)
+	// Refuse to run against a database that's missing migrations: every page
+	// would fail on the first missing table or column, with a vaguer error.
+	if _, err := st.CheckSchema(context.Background()); errors.Is(err, store.ErrSchemaBehind) {
+		log.Fatalf("database: %v", err)
+	} else if err != nil {
+		log.Printf("warning: %v", err)
+	}
+
+	go housekeeping(ctx, st)
 
 	// Only set SNOWBALL_TRUST_PROXY=1 when running behind Caddy (or another
 	// reverse proxy). See web.Config.
@@ -106,9 +114,10 @@ func main() {
 	log.Println("stopped")
 }
 
-// cleanExpiredSessions deletes expired sessions once at startup and then
-// every hour, until ctx is cancelled at shutdown.
-func cleanExpiredSessions(ctx context.Context, st *store.Store) {
+// housekeeping runs at startup and then every hour, until ctx is cancelled
+// at shutdown: it deletes expired sessions, and lets go of what moderation
+// has kept past its 30 days (store.Purge).
+func housekeeping(ctx context.Context, st *store.Store) {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 
@@ -119,6 +128,14 @@ func cleanExpiredSessions(ctx context.Context, st *store.Store) {
 			log.Printf("session cleanup: %v", err)
 		case n > 0:
 			log.Printf("session cleanup: removed %d expired sessions", n)
+		}
+
+		res, err := st.Purge(ctx)
+		switch {
+		case err != nil && ctx.Err() == nil:
+			log.Printf("retention: %v", err)
+		case res.Any():
+			log.Printf("retention: %s", res) // counts only, never content
 		}
 
 		select {
