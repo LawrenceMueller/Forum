@@ -55,6 +55,7 @@
         </label>
       </span>
       {{if .IsAdmin}}{{with openReports}}<a class="button button-alert" href="/admin/reports">{{.}} to review</a>{{end}}{{end}}
+      <a class="replies-link{{if .UnreadReplies}} has-new{{end}}" href="/account/replies">{{if .UnreadReplies}}{{.UnreadReplies}} new {{if eq .UnreadReplies 1}}reply{{else}}replies{{end}}{{else}}replies{{end}}</a>
       <a class="button" href="/account">account</a>
       <form class="inline-form" method="post" action="/logout">
         <button class="linklike" type="submit">log out</button>
@@ -85,7 +86,7 @@
 
   <footer class="footer">
     <p>Built by a programmer who is tired of modern websites. Tired of ads and tracking and data harvesting, and those little stupid chat bubbles.</p>
-    <p class="footer-links"><a href="/rules">rules</a> · <a href="/modlog">moderation log</a></p>
+    <p class="footer-links"><a href="/rules">rules</a> · <a href="/notes">notes</a> · <a href="/modlog">moderation log</a></p>
     <p class="render">page generated in {{.Generated}}</p><p>{{postCount | commas}} posts so far</p>
   </footer>
 

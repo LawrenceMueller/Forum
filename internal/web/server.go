@@ -42,6 +42,7 @@ type Server struct {
 	tagTree    atomic.Pointer[tags.Tree] // the tag system, in memory (tags.go)
 	bodies     *markdown.Cache           // rendered post and comment texts
 	blocked    atomic.Pointer[[]string]  // the domain blocklist (spamchecks.go)
+	latestNote atomic.Pointer[noteView]  // the front page's note from the admin (notes.go); nil for none
 }
 
 // rateLimits are per visitor (per IP). The numbers are "one token refills
@@ -130,6 +131,9 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	if err := s.loadBlocklist(ctx); err != nil {
 		return nil, err
 	}
+	if err := s.loadLatestNote(ctx); err != nil {
+		return nil, err
+	}
 
 	s.refreshStats()
 	s.refreshReports()
@@ -211,6 +215,7 @@ func (s *Server) Handler() http.Handler {
 	// Suspensions and appeals (suspensions.go). Writing routes above are
 	// wrapped in notSuspended.
 	mux.Handle("GET /account/suspension", noStore(s.handleSuspensionPage))
+	mux.Handle("GET /account/replies", noStore(s.handleReplies))
 	mux.Handle("POST /account/suspension", s.limit(lim.report, noStore(s.handleAppeal)))
 	mux.Handle("GET /admin/users", noStore(s.adminOnly(s.handleAdminUser)))
 	mux.Handle("GET /admin/users/{name}", noStore(s.adminOnly(s.handleAdminUser)))
@@ -220,6 +225,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /admin/users/{name}/shadowban", noStore(s.adminOnly(s.handleAdminShadowban)))
 	mux.Handle("POST /admin/appeals", noStore(s.adminOnly(s.handleAppealDecision)))
 	mux.HandleFunc("GET /rules", s.handleRules)
+	mux.HandleFunc("GET /notes", s.handleNotes)
+	mux.Handle("GET /admin/notes", noStore(s.adminOnly(s.handleAdminNotes)))
+	mux.Handle("POST /admin/notes", noStore(s.adminOnly(s.handleAdminNoteChange)))
 	mux.Handle("GET /p/{id}/c/{cid}/reply", noStore(s.notSuspended(s.handleReplyForm)))
 	mux.HandleFunc("GET /p/{id}/c/{cid}", s.handleCommentThread)
 	mux.Handle("POST /p/{id}/c/{cid}/remove", noStore(s.handleRemoveComment))

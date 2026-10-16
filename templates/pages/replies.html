@@ -1,0 +1,37 @@
+{{/*
+  replies.html: replies to the viewer's comments, and comments on their
+  posts, newest first. Private. Opening it marks everything as seen.
+*/}}
+{{define "content"}}
+<main class="narrow history">
+  <h1 class="page-title">Replies to you</h1>
+  <p class="lede">Replies to your comments, and comments on your posts, newest first.
+    Only you can see this page.</p>
+
+  {{if .Replies}}
+  <ul class="history-list replies-list">
+    {{range .Replies}}
+    <li{{if .New}} class="reply-new"{{end}}>
+      <p class="meta">
+        {{if .New}}<span class="new-badge">new</span>{{end}}
+        {{if .AuthorDeleted}}<span class="author-deleted">[deleted]</span>{{else}}<span class="anon {{.Color}}">{{.Author}}</span>{{end}}
+        {{if .OnPost}}commented on your post{{else}}replied to your comment{{end}}
+        in <a href="/p/{{.PostID}}">{{.PostTitle}}</a>, {{.CreatedAt.Format "2006-01-02 15:04"}}
+      </p>
+      <p class="history-snippet"><a href="{{.Link}}">{{.Snippet}}</a></p>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="empty">{{if .FirstURL}}No older replies.{{else}}No replies yet. When someone answers one of your comments or
+    comments on your post, it shows up here.{{end}}</p>
+  {{end}}
+
+  {{if or .FirstURL .NextURL}}
+  <nav class="pager" aria-label="Pages">
+    {{if .FirstURL}}<a href="{{.FirstURL}}">back to the newest</a>{{else}}<span></span>{{end}}
+    {{if .NextURL}}<a href="{{.NextURL}}">older replies</a>{{end}}
+  </nav>
+  {{end}}
+</main>
+{{end}}

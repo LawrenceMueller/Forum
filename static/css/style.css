@@ -1400,3 +1400,44 @@ a.domain:hover { color: var(--ink); }
 .admin-queue .section-title { margin: 1rem 0 0.5rem; }
 .queue-check { font-size: 0.85em; color: var(--muted); }
 .queue-check input { vertical-align: middle; }
+
+/* "delete" in a comment's action row: the confirmation opens on its own line */
+.comment-actions { flex-wrap: wrap; }
+.comment-actions .delete-control { margin-top: 0; font-size: inherit; }
+.comment-actions .delete-control[open] { flex-basis: 100%; }
+.thread-post .delete-control { margin: 0.4rem 0 0; }
+
+/* notes from the admin */
+.admin-note-box .note-head { margin: 0; }
+.note-body > :first-child { margin-top: 0.2rem; }
+.note-body > :last-child { margin-bottom: 0; }
+.note-more { margin: 0.3rem 0 0; font-size: 0.85em; text-align: right; }
+.note-entry { padding: 0.6rem 0; border-bottom: 1px dotted var(--rule); }
+.note-entry .meta { margin: 0; }
+.note-hidden { opacity: 0.6; }
+.note-actions { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 1rem; font-size: 0.85em; }
+.note-actions .delete-control { margin-top: 0; font-size: inherit; }
+.note-actions .delete-control[open] { flex-basis: 100%; }
+.note-actions textarea { width: 100%; font: inherit; margin-bottom: 0.4rem; }
+.form + .panel { margin-top: 1.5rem; }
+
+/* replies */
+.replies-link,
+.replies-link:visited { color: var(--muted); font-size: 0.9em; }
+.replies-link.has-new,
+.replies-link.has-new:visited {
+  padding: 0.15rem 0.5rem;
+  color: var(--ink);
+  font-weight: bold;
+  background: var(--sled);
+  text-decoration: none;
+}
+.new-badge {
+  margin-right: 0.3rem;
+  padding: 0 0.3em;
+  font-size: 0.8em;
+  font-weight: bold;
+  color: var(--ink);
+  background: var(--sled);
+}
+.reply-new .history-snippet a { font-weight: bold; }

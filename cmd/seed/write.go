@@ -131,7 +131,7 @@ func write(ctx context.Context, conn *pgx.Conn, w *world, keys *auth.VoterKeys, 
 	defer tx.Rollback(ctx)
 
 	// Start from empty tables (the seeded tags stay) and IDs from 1.
-	if _, err := tx.Exec(ctx, `TRUNCATE users, sessions, recovery_codes, posts, post_tags, tag_posts, reports, mod_log, suspensions,
+	if _, err := tx.Exec(ctx, `TRUNCATE users, sessions, recovery_codes, posts, post_tags, tag_posts, reports, mod_log, suspensions, admin_notes,
 		comments, post_votes, comment_votes RESTART IDENTITY CASCADE`); err != nil {
 		return err
 	}
@@ -243,6 +243,13 @@ func write(ctx context.Context, conn *pgx.Conn, w *world, keys *auth.VoterKeys, 
 		}
 	})
 	if err != nil {
+		return err
+	}
+
+	// A note from the admin, so the front page shows the box.
+	if _, err := tx.Exec(ctx, `INSERT INTO admin_notes (body, created_at) VALUES ($1, now() - interval '2 days')`,
+		"This is a made-up site from the seed program: every account, post and vote is invented. "+
+			"Log in as anyone with the seed password; older notes would be listed under *notes* at the bottom of the page."); err != nil {
 		return err
 	}
 

@@ -2,7 +2,7 @@
 
 This document is the single place to understand Snowball: what it is, how it is built, what exists today and where it lives in the code, and what is planned. Someone who has never seen the project should be able to read it top to bottom and start working on tickets.
 
-Last updated: after the moderation chapter, all five slices (reports and the queue, suspensions and appeals, cleanup and spam shadowbans, probation and content checks, 30-day erasure; section 7.19, migrations 00013 to 00017; design and decisions in section 11.2), with the startup check that the database has every migration. Before that: the performance pass (section 10, "Performance"), the admin tag page and topic type-ahead (tags v2 Phase 1, finished), tags v2 Phase 1 part A, the tag system v2 design, the voted history views, the seed program and the testing chapter. Next up, to choose with the owner: images (after researching the legal duties, section 11.2), tags Phase 2 (members asking for tags), comment paging, or launch preparation (section 11.4).
+Last updated: after reply notifications (section 7.21, migration 00019), notes from the admin (section 7.20, migration 00018) and deleting from the post page (section 7.15), the first finishing touches, which followed the moderation chapter, all five slices (reports and the queue, suspensions and appeals, cleanup and spam shadowbans, probation and content checks, 30-day erasure; section 7.19, migrations 00013 to 00017; design and decisions in section 11.2), with the startup check that the database has every migration. Before that: the performance pass (section 10, "Performance"), the admin tag page and topic type-ahead (tags v2 Phase 1, finished), tags v2 Phase 1 part A, the tag system v2 design, the voted history views, the seed program and the testing chapter. Next up, to choose with the owner: images (after researching the legal duties, section 11.2), tags Phase 2 (members asking for tags), comment paging, or launch preparation (section 11.4).
 
 ---
 
@@ -195,6 +195,8 @@ snowball/
       schema.go             SchemaVersion and CheckSchema: the server refuses a database missing migrations.
       spam.go               The domain blocklist; finding duplicate posts and comments by content hash.
       retention.go          Purge: erasing removed text, deleting handled reports, emptying old suspensions after 30 days.
+      notes.go              Notes from the admin.
+      replies.go            Reply notifications: the counter bumped with each reply, and the inbox query.
       votes.go              Voting (toggle logic, counts), the viewer's votes, vote state, author lookup.
       edits.go              Editing posts and comments (window and grace enforced in SQL).
       deletes.go            Erasing posts and comments, erasing an account's content, history queries.
@@ -213,6 +215,8 @@ snowball/
       moderation.go         Report pages, the admin's queue (/admin/reports), removal reasons, /modlog, /rules.
       suspensions.go        The read-only guard, the suspension banner and page with its appeal, /admin/users/{name}.
       spamchecks.go         Probation, duplicate and blocklist checks on new posts and comments; /admin/domains.
+      notes.go              Notes from the admin: the front page box, /notes, /admin/notes.
+      replies.go            The reply inbox, /account/replies.
       posts.go              Submit page, post validation, post view preparation, post page, admin removal.
       comments.go           Comment trees (build, prune, sort, depth rules), Wilson score, reply forms, thread pages.
       votes.go              Vote arrows (widgets), who may vote, vote limits, the vote handler.
@@ -460,6 +464,8 @@ Email, IP addresses, user agents, device names, locations, last-login time, logi
 | 00015_cleanup_shadowbans.sql | `users.shadowbanned_at`; the removal reason `shadow`; log actions `cleanup`, `shadowban`, `unshadowban`. |
 | 00016_spam_checks.sql | `blocked_domains (domain, note, created_at)`; an index on `comments (content_hash, created_at)` for duplicate checks. |
 | 00017_retention.sql | `erased_at` on posts and comments (with constraints that erased means empty, and removed comments allowed an empty body once erased); partial indexes for the hourly sweep. Its Down fails once any comment has been erased. |
+| 00018_admin_notes.sql | `admin_notes (body, created_at, edited_at, hidden_at)`: notes from the admin, in Markdown. |
+| 00019_reply_notifications.sql | `users.unread_replies` (counter for the header) and `users.replies_seen_at` (when the inbox was last opened). Nothing else about replies is stored. |
 | 00009_erase_deleted_content.sql | `deleted_post_is_erased`; comment body may be empty only when deleted; `deleted_comment_is_erased`. |
 
 ### Query conventions
@@ -486,6 +492,7 @@ All queries use `$1`-style placeholders, never string building with input (no SQ
 | POST `/p/{id}/remove` | `handleRemovePost` (posts.go) | noStore | Admin only; others get 404. |
 | GET, POST `/p/{id}/report`, `/p/{id}/c/{cid}/report` | `handleReportPage`, `handleReport` (moderation.go) | noStore; POST: limit `report` | Report a post or comment. Login, past the first day, not your own, still up. |
 | GET, POST `/admin/reports` | `handleQueue`, `handleModerate` (moderation.go) | noStore; admin only | The queue; POST dismisses or removes (with a reason) one item. |
+| GET `/account/replies` | `handleReplies` (replies.go) | noStore | The reply inbox, newest first, `?after=` for older; opening the first page marks everything seen. Logged out: 303 to `/login`. |
 | GET, POST `/account/suspension` | `handleSuspensionPage`, `handleAppeal` (suspensions.go) | noStore; POST: limit `report` | Why and until when; the one appeal. Not suspended: 303 to `/account`. |
 | GET `/admin/users/{name}` (and `?name=` lookup) | `handleAdminUser` (suspensions.go) | noStore; admin only | An account: standing, suspensions, recent posts and comments, suspend and lift forms. |
 | POST `/admin/users/{name}/suspend`, `/lift` | `handleAdminSuspend`, `handleAdminLift` | noStore; admin only | |
@@ -494,6 +501,8 @@ All queries use `$1`-style placeholders, never string building with input (no SQ
 | GET, POST `/admin/domains` | `handleDomains`, `handleDomainChange` (spamchecks.go) | noStore; admin only | The blocklist; POST `action=add` (domain, note) or `remove`. |
 | POST `/admin/appeals` | `handleAppealDecision` | noStore; admin only | `action=lift` or `keep`. |
 | GET `/modlog` | `handleModLog` (moderation.go) | | The public moderation log (`?before=<id>` for older); the admin also sees dismissals. |
+| GET `/notes` | `handleNotes` (notes.go) | | Every visible note from the admin, newest first. |
+| GET, POST `/admin/notes` | `handleAdminNotes`, `handleAdminNoteChange` (notes.go) | noStore; admin only | Write, edit, hide, show, delete (with a confirm box) notes. |
 | GET `/rules` | `handleRules` (moderation.go) | | The rules the removal reasons point at. |
 | GET, POST `/admin/tags` | `handleAdminTags`, `handleAdminCreateTag` (tagadmin.go) | noStore; admin only (`adminOnly`, 404 for others) | Every tag (filter with `?q=`), health warnings, the new-tag form. |
 | GET `/admin/tags/{tag}` | `handleAdminTag` | noStore; admin only | One tag's admin page. An old name or alias 303s to the current slug's page. |
@@ -692,6 +701,8 @@ The **database clock decides**: `EditPost` and `EditComment` are single `UPDATE`
 
 **How deleted content shows:** a deleted post drops out of every list and the post count; its page still loads with its title, "[deleted]" as the author, a note that the author deleted it, and its comments intact. It takes no new comments or votes. A deleted comment with replies shows as "[deleted]" with the replies kept; without replies, it disappears.
 
+**Deleting from the post page.** The same delete controls also sit where the things are: "delete this post" under your own post's byline, and "delete" in your own comments' action rows. Each is a `<details>` that opens a confirmation with the real button (no JavaScript, and one stray click can't delete anything). They post to the same endpoints as the history page (`formDeleteItem`), with `back` set to the post, or to the comment's place in the thread. Deleting works at any age (it isn't tied to the edit window) and while suspended.
+
 ### 7.16 Site-wide HTTP security (web/headers.go, main.go)
 
 Headers on every response: `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy: same-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`, and `X-Robots-Tag: noindex, nofollow, noarchive`.
@@ -756,6 +767,16 @@ Slice 1 of the moderation chapter (design in section 11.2).
 
 The moderation chapter is complete.
 
+### 7.20 Notes from the admin (web/notes.go, store/notes.go)
+
+The front page's yellow box shows the newest note that isn't hidden ("From the admin, Oct 15:"), rendered from Markdown through the same cache and sanitizer as posts, with a link to `/notes`, which lists every visible note newest first (a running record of how the site changed). With no notes, there's no box. The admin writes them at `/admin/notes` (also linked from the account page): post, edit (marked "edited"), hide (off the front page and `/notes`, still in the admin's list; the next newest takes the front page), show, and delete (with a confirm box). The current note is kept in memory (`latestNote`), loaded at startup and after every change, so the front page doesn't query for it. Like posts, notes only link with full `https://` addresses (the sanitizer drops relative links). The seed program adds one note so the box shows.
+
+### 7.21 Reply notifications (web/replies.go, store/replies.go)
+
+A reply to you is a comment directly under one of your comments, or a top-level comment on one of your posts, by someone else. Deeper replies, your own replies, and @mentions (which don't exist) don't count. **Nothing about replies is stored** beyond the comments themselves: each account has only `unread_replies`, bumped by one in the same transaction that saves a reply (`notifyReply`, the single place push notifications would hook into later), and `replies_seen_at`. Both ride along in `UserBySession`, so the header costs nothing: a quiet "replies" link, or a yellow "3 new replies" when there are some. `/account/replies` (private, like the history page) lists replies newest first with who, the start of the text, which post, a link to the reply in its thread (or its own thread page when it's deeper than the post page shows), and a "new" badge for anything after `replies_seen_at`. Opening its first page resets the counter and the time; the page is worked out first, so what was new still shows as new that once. Replies that were removed or deleted, replies under a comment or post you've since deleted, and replies on removed posts drop out of the list (the counter may briefly count one; harmless). A shadowbanned bot's replies never count. Suspended accounts still see their replies. The inbox query reads all of one account's replies to sort them: about 20 ms warm for the busiest seeded commenter (1,800 replies).
+
+**Push notifications later.** The design is ready for them: a "push subscriptions" table (opt-in per device), a service worker and manifest so the site installs as an app, and a sender called from `notifyReply`. Pings would carry no content ("You have new replies on Snowball"), since the delivery services (Apple, Google, Mozilla) see that a ping happened, though not what it says. Decided: wait until there are real users who want it.
+
 ## 8. Product decisions log
 
 | Decision | Reasoning |
@@ -775,6 +796,7 @@ The moderation chapter is complete.
 | Suspended accounts are read-only, and can still delete their own content | Sanctions limit participation, not the right to erase what you wrote. |
 | Shadowbans for spam bots only | Bots keep posting into nothing instead of making new accounts; on people it would be deception. |
 | Public moderation log without content | Shows rules are enforced evenly, without repeating what was removed or naming anyone. |
+| Reply notifications are worked out, not stored | The inbox is a query over existing comments; each account keeps only a counter and a time. Nothing to purge, nothing extra to leak. Votes never notify (they'd push people to chase points). |
 | Removed text erased after 30 days | Long enough for appeals and mistakes; fits "store as little as possible". |
 | Topic suggestions come from the server | The type-ahead asks the same Go code that checks the form, so a suggestion can never be refused on posting, and the page carries no tag list or JavaScript matcher to keep in step. Costs a small request per pause in typing (rate limited, around 1 ms each). |
 | Follows and mutes stored on the account | Accepted cost: visible only on private account pages, and an account carries no real-world identity. |
@@ -1024,15 +1046,12 @@ VPS with Docker Compose running Postgres, Snowball, and Caddy (automatic HTTPS).
 | Item | Notes |
 |---|---|
 | `/about`, `/changelog` | In the owner's voice; changelog shows the site growing. (`/rules` exists as a draft for the owner to rewrite.) |
-| Admin notes | Real notes to replace the static placeholder on the front page. |
-| Reply notifications | "Someone replied to you", on-site only, no email. |
 | Live password checklist | Rules tick off as the user types (snowball.js). |
 | Spoiler tags | A small goldmark extension. |
 | Welcome page refresh | Refreshing resubmits sign-up; consider a one-time server-side handoff. |
 | Recovery code regeneration | Deliberately deferred; the owner leans against it. |
 | Single-use form tokens | Currently reusable within 2 hours. |
 | Comment paging | Threads load at most 2,000 comments today. The biggest seeded thread (2,400) takes 61 ms logged out and 96 ms logged in, nearly all template work for 2 to 3 MB of HTML; paging (Reddit shows about 200, then "more comments") would cut that and the page weight. |
-| Delete from the post page | Deleting is offered only on the history page today; a delete control beside "edit" on your own posts and comments would be a small addition. |
 | Hot ranking for more lists | Only "Popular today" uses it; a `/hot` list or tag-page option could follow. |
 | Performance follow-ups | Done: the pass in section 10, "Performance". Left: comment paging for huge threads; `/top` (7 ms) and the history views would be next if they grow. |
 | sqlc | Considered; on Windows its Postgres parser needs cgo, so run it via Docker if adopted. |

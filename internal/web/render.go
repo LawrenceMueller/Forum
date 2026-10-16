@@ -21,13 +21,14 @@ var taglines = []string{
 // basePage is what layout.html needs on every page.
 // Page-specific structs embed it, so its fields are available on every page.
 type basePage struct {
-	Title       string
-	Tagline     string
-	User        string            // empty means logged out
-	IsAdmin     bool              // shows admin links (the pages themselves check again)
-	Suspended   *suspensionBanner // the banner for a suspended account; nil otherwise
-	HideAccount bool              // true on sign up / log in, where the links would be redundant
-	Generated   time.Duration
+	Title         string
+	Tagline       string
+	User          string            // empty means logged out
+	IsAdmin       bool              // shows admin links (the pages themselves check again)
+	Suspended     *suspensionBanner // the banner for a suspended account; nil otherwise
+	UnreadReplies int               // replies since the inbox was last opened (header link)
+	HideAccount   bool              // true on sign up / log in, where the links would be redundant
+	Generated     time.Duration
 
 	// The "up" link at the top of the page: where this page sits in the
 	// site's structure, so it always goes to the same sensible place however
@@ -52,6 +53,7 @@ func newBasePage(r *http.Request, title string) basePage {
 	if u, ok := userFrom(r.Context()); ok {
 		b.User = u.Username
 		b.IsAdmin = u.IsAdmin
+		b.UnreadReplies = u.UnreadReplies
 		if u.Suspension != nil {
 			b.Suspended = bannerFor(u.Suspension)
 		}

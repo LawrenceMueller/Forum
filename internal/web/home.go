@@ -84,6 +84,7 @@ type homePage struct {
 	Active     []postView
 	MoreActive bool // there are more active posts than fit on the front page
 	Tags       []tagLink
+	Note       *noteView // the newest note from the admin; nil for none
 }
 
 // GET /
@@ -118,6 +119,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		Popular:    popularViews,
 		Active:     activeViews,
 		MoreActive: next != nil,
+		Note:       s.latestNote.Load(),
 		Tags:       s.sidebarTags(),
 	}
 	data.Generated = time.Since(start)

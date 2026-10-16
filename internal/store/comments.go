@@ -142,11 +142,12 @@ func (s *Store) createCommentOnce(ctx context.Context, c NewComment, publicID, h
 	// FOR UPDATE locks the post row until we commit, so two comments
 	// arriving at once can't both read the same count and lose one.
 	var locked bool
+	var notify int64 // whose reply this is: the post's author, or the parent comment's
 	err = tx.QueryRow(ctx, `
 		SELECT deleted_at IS NOT NULL OR (removed_at IS NOT NULL
-		       AND NOT (removal_reason = 'shadow' AND author_id = $2))
+		       AND NOT (removal_reason = 'shadow' AND author_id = $2)), author_id
 		FROM posts WHERE id = $1 FOR UPDATE`,
-		c.PostID, c.AuthorID).Scan(&locked)
+		c.PostID, c.AuthorID).Scan(&locked, &notify)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, ErrPostNotFound
 	}
@@ -165,9 +166,9 @@ func (s *Store) createCommentOnce(ctx context.Context, c NewComment, publicID, h
 		var gone bool
 		err := tx.QueryRow(ctx, `
 			SELECT id, post_id, depth, deleted_at IS NOT NULL OR (removed_at IS NOT NULL
-			       AND NOT (removal_reason = 'shadow' AND author_id = $2))
+			       AND NOT (removal_reason = 'shadow' AND author_id = $2)), author_id
 			FROM comments WHERE public_id = $1`, c.ParentPublicID, c.AuthorID,
-		).Scan(&id, &postID, &parentDepth, &gone)
+		).Scan(&id, &postID, &parentDepth, &gone, &notify)
 		if errors.Is(err, pgx.ErrNoRows) || (err == nil && (postID != c.PostID || gone)) {
 			return 0, ErrParentGone
 		}
@@ -190,7 +191,10 @@ func (s *Store) createCommentOnce(ctx context.Context, c NewComment, publicID, h
 		return 0, err
 	}
 	if shadow {
-		return depth, tx.Commit(ctx) // no count, no bump: nobody else can see it
+		return depth, tx.Commit(ctx) // no count, no bump, no notification: nobody else can see it
+	}
+	if err := notifyReply(ctx, tx, notify, c.AuthorID); err != nil {
+		return 0, err
 	}
 
 	if _, err := tx.Exec(ctx, `

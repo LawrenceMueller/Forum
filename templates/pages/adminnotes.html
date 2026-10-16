@@ -1,0 +1,69 @@
+{{/*
+  adminnotes.html: writing notes for the front page, and managing old ones.
+  The newest visible note is the one on the front page.
+*/}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Notes <span class="admin-badge">admin</span></h1>
+  <p class="lede">The newest note that isn't hidden shows on the front page; all of them are listed at
+    <a href="/notes">/notes</a>. Markdown works, as in posts.</p>
+
+  {{if .Notice}}<div class="note" role="status"><p>{{.Notice}}</p></div>{{end}}
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  <form class="form" method="post" action="/admin/notes">
+    {{template "formguard" .FormToken}}
+    <input type="hidden" name="action" value="add">
+    <div class="field">
+      <label for="body">New note <span class="optional">up to 2,000 characters</span></label>
+      <textarea id="body" name="body" rows="5" maxlength="2000" required>{{.Draft}}</textarea>
+    </div>
+    <button class="button" type="submit">Post to the front page</button>
+  </form>
+
+  <section class="panel">
+    <h2>All notes</h2>
+    {{if not .Notes}}<p>None yet.</p>{{end}}
+    {{range $i, $n := .Notes}}
+    <article class="note-entry{{if .Hidden}} note-hidden{{end}}">
+      <p class="meta">{{.FullDate}}{{if .Edited}} · edited{{end}}
+        {{if .Hidden}} · <strong>hidden</strong>{{else if eq $i 0}} · <strong>on the front page</strong>{{end}}</p>
+      <div class="note-body">{{.HTML}}</div>
+      <div class="note-actions">
+        <details class="delete-control">
+          <summary>edit</summary>
+          <form method="post" action="/admin/notes">
+            {{template "formguard" $.FormToken}}
+            <input type="hidden" name="action" value="edit">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <textarea name="body" rows="5" maxlength="2000" required aria-label="Note text">{{.Body}}</textarea>
+            <button class="button" type="submit">Save</button>
+          </form>
+        </details>
+        <form class="inline-form" method="post" action="/admin/notes">
+          {{template "formguard" $.FormToken}}
+          <input type="hidden" name="id" value="{{.ID}}">
+          {{if .Hidden}}<button class="linklike" type="submit" name="action" value="show">show</button>
+          {{else}}<button class="linklike" type="submit" name="action" value="hide">hide</button>{{end}}
+        </form>
+        <details class="delete-control">
+          <summary>delete</summary>
+          <form method="post" action="/admin/notes">
+            {{template "formguard" $.FormToken}}
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <label class="ack"><input type="checkbox" name="confirm" value="1" required> Delete it for good</label>
+            <button class="button button-danger" type="submit">Delete note</button>
+          </form>
+        </details>
+      </div>
+    </article>
+    {{end}}
+  </section>
+</main>
+{{end}}

@@ -5,11 +5,13 @@
   <div class="layout">
     <main>
 
-      <section class="note" aria-label="Note from the admin">
-        <p><strong>From the admin, Sep 24:</strong> Comment threading is live. It's a little rough around
-          the edges and deep threads get narrow on phones. I'm working on it. If something breaks,
-          post under <a href="/t/meta">meta</a> and I'll see it.</p>
+      {{with .Note}}
+      <section class="note admin-note-box" aria-label="Note from the admin">
+        <p class="note-head"><strong>From the admin, {{.Date}}:</strong></p>
+        <div class="note-body">{{.HTML}}</div>
+        <p class="note-more"><a href="/notes">all notes</a></p>
       </section>
+      {{end}}
 
       {{/* front page = hybrid: a few popular posts, then the bump-ordered stream */}}
       <h2 class="section-title">Popular today <span>well-liked and rising, from the last 24 hours</span></h2>

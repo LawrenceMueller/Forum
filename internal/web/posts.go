@@ -218,6 +218,7 @@ type postView struct {
 	Held          bool   // hidden by reports until the admin reviews it
 	Erased        bool   // removed over 30 days ago: its words are gone
 	CanReport     bool
+	CanDelete     bool // the viewer wrote it and it isn't deleted yet
 }
 
 func toPostView(p store.Post, tree *tags.Tree) postView {
@@ -267,6 +268,7 @@ type postPage struct {
 	Post        postView
 	IsAdmin     bool
 	RemoveToken string
+	DeleteToken string // for "delete" on the viewer's own post and comments
 
 	// comments
 	Comments        []*commentNode
@@ -329,6 +331,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 	view.CanEdit, view.EditLeft = canEdit(opts.viewer, p.Author, p.AuthorDeleted,
 		p.Removed || p.Deleted, p.CreatedAt)
 	view.CanReport = opts.viewer.canReport(p.Author, p.AuthorDeleted, p.Removed || p.Deleted)
+	view.CanDelete = loggedIn && !p.Deleted && !p.AuthorDeleted && p.Author == u.Username
 
 	data := postPage{
 		basePage:    newBasePage(r, p.Title).withUp("/", "front page"),
@@ -349,6 +352,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 	if u.IsAdmin {
 		data.RemoveToken = s.formToken(formRemovePost)
 	}
+	data.DeleteToken = opts.deleteToken
 	data.Generated = time.Since(start)
 	s.render(w, "postpage.html", data)
 }

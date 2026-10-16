@@ -1,0 +1,18 @@
+{{/* notes.html: every note from the admin, newest first. */}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Notes from the admin</h1>
+  <p class="lede">Updates about Snowball itself: what's new, what's broken, what's coming. The newest one is
+    also on the front page.</p>
+  {{if .Notes}}
+  {{range .Notes}}
+  <article class="note-entry" id="note-{{.ID}}">
+    <p class="meta"><a href="#note-{{.ID}}">{{.FullDate}}</a>{{if .Edited}} · edited{{end}}</p>
+    <div class="note-body">{{.HTML}}</div>
+  </article>
+  {{end}}
+  {{else}}
+  <p class="empty">No notes yet.</p>
+  {{end}}
+</main>
+{{end}}

@@ -42,6 +42,18 @@
          title="{{.EditLeft}} left to edit">edit</a>
       {{end}}
       {{if .CanReport}}<a class="report-link" href="/p/{{.PostID}}/c/{{.PublicID}}/report">report</a>{{end}}
+      {{if .CanDelete}}
+      <details class="delete-control">
+        <summary>delete</summary>
+        <form method="post" action="/p/{{.PostID}}/c/{{.PublicID}}/delete">
+          {{template "formguard" .DeleteToken}}
+          <input type="hidden" name="back" value="/p/{{.PostID}}#c-{{.PublicID}}">
+          <p>Delete this comment for good? Its text and your name are erased. Any replies stay,
+            under a "[deleted]" placeholder.</p>
+          <button class="button button-danger" type="submit">delete comment</button>
+        </form>
+      </details>
+      {{end}}
       {{if .RemoveToken}}
       <form class="inline-form admin-remove" method="post" action="/p/{{.PostID}}/c/{{.PublicID}}/remove">
         {{template "formguard" .RemoveToken}}

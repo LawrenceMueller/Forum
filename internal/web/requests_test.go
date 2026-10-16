@@ -311,3 +311,36 @@ func TestVoting(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteFromThePostPage(t *testing.T) {
+	s := newSite(t)
+	author := s.user(t, "blue-humming-otter")
+	other := s.user(t, "red-baking-hare")
+	post := s.post(t, author, "Mine to delete")
+	mine := s.comment(t, post, author, "my own comment")
+	theirs := s.comment(t, post, other, "their comment")
+	p := "/p/" + post.PublicID
+
+	// Only the author gets the controls, and only on their own things.
+	page := s.get(p, author)
+	expectContains(t, "author, post", page, `action="`+p+`/delete"`)
+	expectContains(t, "author, own comment", page, `action="`+p+`/c/`+mine+`/delete"`)
+	expectMissing(t, "author, their comment", page, `action="`+p+`/c/`+theirs+`/delete"`)
+	theirView := s.get(p, other)
+	expectMissing(t, "other, the post", theirView, `action="`+p+`/delete"`)
+	expectContains(t, "other, own comment", theirView, `action="`+p+`/c/`+theirs+`/delete"`)
+	expectMissing(t, "logged out", s.get(p, nil), "/delete")
+
+	// Deleting a comment comes back to its place in the thread.
+	rec := s.send(p+"/c/"+mine+"/delete", form("form_token", s.token(formDeleteItem), "back", p+"#c-"+mine), author)
+	expectRedirect(t, "delete comment", rec, p+"#c-"+mine)
+	expectMissing(t, "comment gone", s.get(p, nil), "my own comment")
+
+	// Deleting the post comes back to it, now erased, with its discussion intact.
+	rec = s.send(p+"/delete", form("form_token", s.token(formDeleteItem), "back", p), author)
+	expectRedirect(t, "delete post", rec, p)
+	after := s.get(p, nil)
+	expectContains(t, "post deleted", after, "This post was deleted by its author.")
+	expectContains(t, "discussion stays", after, "their comment")
+	expectMissing(t, "no controls on a deleted post", s.get(p, author), `action="`+p+`/delete"`)
+}

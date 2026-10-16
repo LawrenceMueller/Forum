@@ -74,6 +74,7 @@ func TestSmokeEveryPage(t *testing.T) {
 		{"/recover", nil, 200, "page"},
 		{"/goodbye", nil, 200, "page"},
 		{"/rules", nil, 200, "page"},
+		{"/notes", nil, 200, "page"},
 		{"/modlog", nil, 200, "page"},
 		{"/robots.txt", nil, 200, "other"},
 		{"/static/css/style.css", nil, 200, "other"},
@@ -84,6 +85,7 @@ func TestSmokeEveryPage(t *testing.T) {
 		{"/submit", reader, 200, "page"},
 		{"/account", reader, 200, "page"},
 		{"/account/history", reader, 200, "page"},
+		{"/account/replies", reader, 200, "page"},
 		{"/account/history?show=comments", reader, 200, "page"},
 		{"/account/history?show=upvoted", reader, 200, "page"},
 		{"/account/history?show=downvoted", reader, 200, "page"},
@@ -101,6 +103,7 @@ func TestSmokeEveryPage(t *testing.T) {
 		{"/admin/tags", boss, 200, "page"},
 		{"/admin/reports", boss, 200, "page"},
 		{"/admin/domains", boss, 200, "page"},
+		{"/admin/notes", boss, 200, "page"},
 		{"/admin/users/blue-humming-otter", boss, 200, "page"},
 		{"/account/suspension", reader, 303, "other"}, // not suspended: back to the account page
 		{"/modlog", boss, 200, "page"},
@@ -120,6 +123,7 @@ func TestSmokeEveryPage(t *testing.T) {
 		{"/submit", nil, 303, "other"},
 		{"/account", nil, 303, "other"},
 		{"/account/history", nil, 303, "other"},
+		{"/account/replies", nil, 303, "other"},
 		{"/recovered", nil, 303, "other"},
 
 		// Logged-in visitors don't need these.

@@ -39,6 +39,18 @@
       {{if .CanReport}}| <a class="report-link" href="/p/{{.PublicID}}/report">report</a>{{end}}
     </p>
     </div>
+    {{if .CanDelete}}
+    <details class="delete-control">
+      <summary>delete this post</summary>
+      <form method="post" action="/p/{{.PublicID}}/delete">
+        {{template "formguard" $.DeleteToken}}
+        <input type="hidden" name="back" value="/p/{{.PublicID}}">
+        <p>Delete this post for good? Its text, link, and your name are erased. The title
+          stays, so the discussion under it still makes sense.</p>
+        <button class="button button-danger" type="submit">delete post</button>
+      </form>
+    </details>
+    {{end}}
 
     {{if .Deleted}}<p class="hint">This post was deleted by its author.</p>{{end}}
     {{if .BodyHTML}}<div class="post-body">{{.BodyHTML}}</div>{{end}}

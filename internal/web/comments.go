@@ -80,6 +80,8 @@ type commentNode struct {
 	CanEdit       bool   // the viewer wrote it and the edit window is open
 	EditLeft      string // "7 minutes", for the edit link
 	CanReport     bool
+	CanDelete     bool   // the viewer wrote it: a "delete" control (works at any age)
+	DeleteToken   string // for that control's form
 	RemovedAs     string // for the admin: why it was removed ("spam", "hidden by reports")
 
 	// used while building and sorting, not by templates
@@ -101,6 +103,7 @@ type treeOptions struct {
 	viewer      voteViewer
 	myVotes     map[int64]int              // the viewer's votes, by comment ID
 	render      func(string) template.HTML // Markdown to HTML: the server's cache (nil: render directly)
+	deleteToken string                     // for "delete" on the viewer's own comments
 }
 
 func newCommentNode(c store.Comment, o treeOptions) *commentNode {
@@ -153,6 +156,9 @@ func newCommentNode(c store.Comment, o treeOptions) *commentNode {
 	if !n.hidden {
 		n.CanEdit, n.EditLeft = canEdit(o.viewer, c.Author, c.AuthorDeleted, c.Removed || c.Deleted, c.CreatedAt)
 		n.CanReport = o.viewer.canReport(c.Author, c.AuthorDeleted, c.Removed || c.Deleted || o.postClosed)
+		if o.viewer.loggedIn && !c.AuthorDeleted && c.Author == o.viewer.user.Username && o.deleteToken != "" {
+			n.CanDelete, n.DeleteToken = true, o.deleteToken
+		}
 		n.Vote = o.viewer.widget("comment", c.PublicID, c.Upvotes-c.Downvotes, o.myVotes[c.ID],
 			c.Author, c.AuthorDeleted, c.Removed || c.Deleted || o.postClosed, true)
 	}
@@ -529,6 +535,9 @@ func (s *Server) treeOptionsFor(r *http.Request, post store.Post, sortMode strin
 		postClosed: post.Removed || post.Deleted,
 		viewer:     s.voteViewerFor(r),
 		render:     s.bodies.Render,
+	}
+	if loggedIn {
+		o.deleteToken = s.formToken(formDeleteItem)
 	}
 	if u.IsAdmin {
 		o.removeToken = s.formToken(formRemoveComment)

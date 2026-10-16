@@ -24,6 +24,11 @@ type User struct {
 
 	// Shadowbanned: a spam bot's account (cleanup.go). Filled in by UserBySession.
 	Shadowbanned bool
+
+	// Replies (replies.go): how many arrived since the account last opened
+	// its inbox, and when that was. Filled in by UserBySession.
+	UnreadReplies int
+	RepliesSeenAt time.Time
 }
 
 // UsernameTaken is the courtesy check used when offering a name.
