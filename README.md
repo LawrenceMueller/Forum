@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/LawrenceMueller/Forum/actions/workflows/ci.yml/badge.svg)](https://github.com/LawrenceMueller/Forum/actions/workflows/ci.yml)
 
-A small, anonymous, Reddit-style forum built with Go, PostgreSQL and htmx.
+An anonymous, privacy-first web forum built with Go, PostgreSQL and htmx.
 
 No email, no real names, no tracking, no ads. Snowball picks your username, you pick the password, and the site stores as little about you as it possibly can.
 
@@ -25,7 +25,7 @@ Four values drive nearly every decision in the codebase:
 
 **Reading and posting**
 - Link and text posts with sanitized Markdown, threaded comments, and up and down voting
-- Front page with "popular today" (Reddit's hot ranking) and "active right now," plus new, active and top lists
+- Front page with "popular today" and "active right now," plus new, active and top lists
 - Keyset pagination that never skips or repeats posts, at any size
 - Comment sorting by Wilson score ("best"), new or old, with collapsible threads and "continue this thread" for deep replies
 - A 10-minute edit window enforced by the database clock, and self-deletion that erases content instead of hiding it

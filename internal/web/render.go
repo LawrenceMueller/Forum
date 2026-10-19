@@ -15,7 +15,7 @@ import (
 
 // One is picked at random on every page load. Add more whenever you think of them.
 var taglines = []string{
-	"An anonymous forum, keep your shitty personal data",
+	"An anonymous forum, keep your personal data",
 }
 
 // basePage is what layout.html needs on every page.
