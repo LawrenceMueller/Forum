@@ -6,8 +6,7 @@ A small, anonymous, Reddit-style forum built with Go, PostgreSQL and htmx.
 
 No email, no real names, no tracking, no ads. Snowball picks your username, you pick the password, and the site stores as little about you as it possibly can.
 
-<!-- Add a screenshot here once you have one, for example:
-![Snowball's front page](docs/screenshot.png) -->
+![Snowball's front page](docs/SnowballFrontPage.png)
 
 **Contents:** [Features](#features) · [Tech stack](#tech-stack) · [Architecture](#architecture) · [Database](#database) · [Security and privacy](#security-and-privacy) · [Testing](#testing) · [How it was built](#how-it-was-built) · [Running it locally](#running-it-locally) · [Roadmap](#roadmap)
 
