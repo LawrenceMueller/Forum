@@ -195,3 +195,11 @@ func TestErasedItemsForTheAdmin(t *testing.T) {
 	expectContains(t, "visitor", s.get("/p/"+post.PublicID, nil), "[removed: spam]")
 	expectContains(t, "rules", s.get("/rules", nil), "keeps its text for 30 days")
 }
+
+func TestAboutPage(t *testing.T) {
+	s := newSite(t)
+	page := s.get("/about", nil)
+	expectStatus(t, "about", page, http.StatusOK)
+	expectContains(t, "about", page, "What Snowball knows about you")
+	expectContains(t, "sidebar link works", s.get("/", nil), `href="/about"`)
+}

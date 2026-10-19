@@ -1,0 +1,59 @@
+{{/*
+  about.html: what Snowball is, what it knows about you, and who runs it.
+  DRAFT: written for the owner to rewrite in his own words. Every claim here
+  is true of the code as it stands; keep it that way when editing (the
+  privacy section especially, since people will rely on it).
+*/}}
+{{define "content"}}
+<main class="narrow about">
+  <h1 class="page-title">About Snowball</h1>
+  <p class="lede">A small, anonymous forum for any conversation, built and run by one person who
+    got tired of the modern web. No ads, no tracking, no algorithm deciding what you see, and no
+    little chat bubbles.</p>
+
+  <h2>How it works</h2>
+  <p>Anyone can read. With an account you can post (a link, some text, or both), comment, and vote.
+    Every post is filed under one to three topics from a shared <a href="/tags">tree of tags</a>, so
+    a post about sourdough also shows up under Bread, Baking, and Food &amp; drink. The front page
+    shows what's well liked today and the conversations that are active right now; everything else
+    is sorted by plain old time.</p>
+
+  <h2>What Snowball knows about you</h2>
+  <p>As little as it can, on purpose.</p>
+  <ul>
+    <li><strong>No email, no phone number, no real name.</strong> Signing up asks for nothing about
+      you. Your username is generated for you, so it can't give you away, and it can't be changed.</li>
+    <li><strong>Your password is never stored</strong>, only a slow, salted hash of it. If you forget
+      it, your recovery codes are the only way back in. There's no email to reset it with.</li>
+    <li><strong>No IP addresses are stored or logged.</strong> They're held in memory for a few
+      minutes to slow down abuse, then forgotten.</li>
+    <li><strong>Votes aren't tied to your account.</strong> They're stored under a scrambled
+      fingerprint, so nobody, the admin included, can list who voted for what. Snowball doesn't
+      even record when you voted.</li>
+    <li><strong>Reports are anonymous</strong>, even to the admin.</li>
+    <li><strong>No tracking, analytics, ads, or third-party anything.</strong> Every page, script,
+      and font comes from Snowball itself. Snowball is also kept out of search engines.</li>
+    <li><strong>One cookie</strong>, to keep you logged in. Logging out logs you out everywhere.</li>
+  </ul>
+
+  <h2>What it keeps, and for how long</h2>
+  <ul>
+    <li>Your posts and comments, under your generated name, until you delete them.</li>
+    <li><strong>Deleting erases.</strong> When you delete a post or comment, its words are wiped
+      from the database, not just hidden. A deleted post keeps its title, so the discussion under it
+      still makes sense.</li>
+    <li>You can delete your whole account at any time, and choose to erase everything you wrote
+      along with it.</li>
+    <li>Things the admin removes keep their text for 30 days (for appeals and mistakes), then it's
+      erased. Handled reports are deleted after 30 days too.</li>
+    <li>Your private history and replies pages show what you've written, voted on, and been
+      replied to. Only you can see them.</li>
+  </ul>
+
+  <h2>Who runs it</h2>
+  <p>One person, in their spare time. Moderation follows the <a href="/rules">rules</a>, and every
+    removal is listed in the public <a href="/modlog">moderation log</a>, without content or names.
+    News about the site itself goes in the <a href="/notes">notes</a>. There's no email address to
+    write to: questions, ideas, and bug reports go under the <a href="/t/meta">Meta</a> tag.</p>
+</main>
+{{end}}

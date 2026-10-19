@@ -2,7 +2,7 @@
 
 This document is the single place to understand Snowball: what it is, how it is built, what exists today and where it lives in the code, and what is planned. Someone who has never seen the project should be able to read it top to bottom and start working on tickets.
 
-Last updated: after reply notifications (section 7.21, migration 00019), notes from the admin (section 7.20, migration 00018) and deleting from the post page (section 7.15), the first finishing touches, which followed the moderation chapter, all five slices (reports and the queue, suspensions and appeals, cleanup and spam shadowbans, probation and content checks, 30-day erasure; section 7.19, migrations 00013 to 00017; design and decisions in section 11.2), with the startup check that the database has every migration. Before that: the performance pass (section 10, "Performance"), the admin tag page and topic type-ahead (tags v2 Phase 1, finished), tags v2 Phase 1 part A, the tag system v2 design, the voted history views, the seed program and the testing chapter. Next up, to choose with the owner: images (after researching the legal duties, section 11.2), tags Phase 2 (members asking for tags), comment paging, or launch preparation (section 11.4).
+Last updated: after the `/about` page and reply notifications (section 7.21, migration 00019), notes from the admin (section 7.20, migration 00018) and deleting from the post page (section 7.15), the first finishing touches, which followed the moderation chapter, all five slices (reports and the queue, suspensions and appeals, cleanup and spam shadowbans, probation and content checks, 30-day erasure; section 7.19, migrations 00013 to 00017; design and decisions in section 11.2), with the startup check that the database has every migration. Before that: the performance pass (section 10, "Performance"), the admin tag page and topic type-ahead (tags v2 Phase 1, finished), tags v2 Phase 1 part A, the tag system v2 design, the voted history views, the seed program and the testing chapter. Next up, to choose with the owner: images (after researching the legal duties, section 11.2), tags Phase 2 (members asking for tags), comment paging, or launch preparation (section 11.4).
 
 ---
 
@@ -503,6 +503,7 @@ All queries use `$1`-style placeholders, never string building with input (no SQ
 | GET `/modlog` | `handleModLog` (moderation.go) | | The public moderation log (`?before=<id>` for older); the admin also sees dismissals. |
 | GET `/notes` | `handleNotes` (notes.go) | | Every visible note from the admin, newest first. |
 | GET, POST `/admin/notes` | `handleAdminNotes`, `handleAdminNoteChange` (notes.go) | noStore; admin only | Write, edit, hide, show, delete (with a confirm box) notes. |
+| GET `/about` | `handleAbout` (moderation.go) | | What Snowball is, what it knows about you, what it keeps, who runs it. A draft in the owner's voice; every claim must stay true of the code. Linked from the sidebar and the footer. |
 | GET `/rules` | `handleRules` (moderation.go) | | The rules the removal reasons point at. |
 | GET, POST `/admin/tags` | `handleAdminTags`, `handleAdminCreateTag` (tagadmin.go) | noStore; admin only (`adminOnly`, 404 for others) | Every tag (filter with `?q=`), health warnings, the new-tag form. |
 | GET `/admin/tags/{tag}` | `handleAdminTag` | noStore; admin only | One tag's admin page. An old name or alias 303s to the current slug's page. |
@@ -1045,7 +1046,7 @@ VPS with Docker Compose running Postgres, Snowball, and Caddy (automatic HTTPS).
 
 | Item | Notes |
 |---|---|
-| `/about`, `/changelog` | In the owner's voice; changelog shows the site growing. (`/rules` exists as a draft for the owner to rewrite.) |
+| `/changelog` | Partly covered by `/notes`. (`/about` and `/rules` exist as drafts for the owner to rewrite.) |
 | Live password checklist | Rules tick off as the user types (snowball.js). |
 | Spoiler tags | A small goldmark extension. |
 | Welcome page refresh | Refreshing resubmits sign-up; consider a one-time server-side handoff. |

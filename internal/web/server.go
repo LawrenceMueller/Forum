@@ -225,6 +225,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /admin/users/{name}/shadowban", noStore(s.adminOnly(s.handleAdminShadowban)))
 	mux.Handle("POST /admin/appeals", noStore(s.adminOnly(s.handleAppealDecision)))
 	mux.HandleFunc("GET /rules", s.handleRules)
+	mux.HandleFunc("GET /about", s.handleAbout)
 	mux.HandleFunc("GET /notes", s.handleNotes)
 	mux.Handle("GET /admin/notes", noStore(s.adminOnly(s.handleAdminNotes)))
 	mux.Handle("POST /admin/notes", noStore(s.adminOnly(s.handleAdminNoteChange)))

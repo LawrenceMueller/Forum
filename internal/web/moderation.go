@@ -526,6 +526,14 @@ func (s *Server) handleModLog(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "modlog.html", data)
 }
 
+// GET /about
+func (s *Server) handleAbout(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	data := newBasePage(r, "about").withUp("/", "front page")
+	data.Generated = time.Since(start)
+	s.render(w, "about.html", data)
+}
+
 // GET /rules
 func (s *Server) handleRules(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()

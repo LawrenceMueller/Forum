@@ -74,6 +74,7 @@ func TestSmokeEveryPage(t *testing.T) {
 		{"/recover", nil, 200, "page"},
 		{"/goodbye", nil, 200, "page"},
 		{"/rules", nil, 200, "page"},
+		{"/about", nil, 200, "page"},
 		{"/notes", nil, 200, "page"},
 		{"/modlog", nil, 200, "page"},
 		{"/robots.txt", nil, 200, "other"},

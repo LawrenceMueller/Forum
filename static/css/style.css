@@ -1441,3 +1441,8 @@ a.domain:hover { color: var(--ink); }
   background: var(--sled);
 }
 .reply-new .history-snippet a { font-weight: bold; }
+
+.about h2 { margin: 1.4rem 0 0.3rem; font-size: 1.1rem; }
+.about p { margin: 0 0 0.6rem; }
+.about ul { margin: 0 0 0.6rem; padding-left: 1.2rem; }
+.about li { margin-bottom: 0.35rem; }
