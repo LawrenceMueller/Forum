@@ -42,10 +42,10 @@ func TestCleanupRemovesEverythingAndWithdrawsVotes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := st.Cleanup(ctx, boss, "fp-boss", "spam"); !errors.Is(err, ErrCantSuspendAdmin) {
+	if _, err := st.Cleanup(ctx, boss, "fp-boss", "pk-boss", "spam"); !errors.Is(err, ErrCantSuspendAdmin) {
 		t.Errorf("cleaning up the admin gave %v", err)
 	}
-	res, err := st.Cleanup(ctx, spammer, "fp-spammer", "spam")
+	res, err := st.Cleanup(ctx, spammer, "fp-spammer", "pk-spammer", "spam")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestShadowbans(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := st.SetShadowban(ctx, bot, "fp-bot", true); err != nil {
+	if err := st.SetShadowban(ctx, bot, "fp-bot", "pk-bot", true); err != nil {
 		t.Fatal(err)
 	}
 	if u := sessionUser(t, st, bot); !u.Shadowbanned {
@@ -120,7 +120,7 @@ func TestShadowbans(t *testing.T) {
 		t.Errorf("someone else commenting on a shadowed post gave %v", err)
 	}
 
-	if err := st.SetShadowban(ctx, bot, "fp-bot", false); err != nil {
+	if err := st.SetShadowban(ctx, bot, "fp-bot", "pk-bot", false); err != nil {
 		t.Fatal(err)
 	}
 	if mustLoadPost(t, st, mustPost(t, st, bot, "After").PublicID).Removed {

@@ -148,7 +148,8 @@ func (s *Store) ListPosts(ctx context.Context, opt ListOptions) (posts []Post, n
 		       p.created_at, p.last_activity_at, p.edited_at, p.score, p.comment_count,
 		       coalesce((SELECT array_agg(t.name ORDER BY t.name)
 		                 FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
-		                 WHERE pt.post_id = p.id), '{}')
+		                 WHERE pt.post_id = p.id), '{}'),
+		       (SELECT mega FROM polls WHERE post_id = p.id), p.by_site
 		FROM ` + from + `
 		JOIN users u ON u.id = p.author_id
 		WHERE ` + strings.Join(where, " AND ") + `
@@ -161,10 +162,12 @@ func (s *Store) ListPosts(ctx context.Context, opt ListOptions) (posts []Post, n
 	}
 	posts, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (Post, error) {
 		var p Post
+		var mega *bool // NULL: no poll
 		err := row.Scan(&p.ID, &p.PublicID, &p.Title, &p.URL,
 			&p.Author, &p.AuthorDeleted,
 			&p.CreatedAt, &p.LastActivityAt, &p.EditedAt, &p.Score, &p.CommentCount,
-			&p.Tags)
+			&p.Tags, &mega, &p.BySite)
+		p.IsPoll, p.IsMega = mega != nil, mega != nil && *mega
 		return p, err
 	})
 	if err != nil {

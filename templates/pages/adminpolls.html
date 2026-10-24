@@ -1,0 +1,133 @@
+{{/*
+  adminpolls.html: the mega poll queue, and the form to add one (or, at
+  /admin/polls/{day}, to change a queued one). Expects adminPollsPage.
+*/}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Mega polls <span class="admin-badge">admin</span></h1>
+  <p class="lede">One a day. Each goes up at midnight Pacific time as a post from "Snowball", gets the box at the
+    top of the front page, and closes at the next midnight. Results stay hidden until then.
+    {{if .QueuedTo}}Queued up to <strong>{{.QueuedTo}}</strong>.{{end}}</p>
+
+  {{if .Notice}}<div class="note" role="status"><p>{{.Notice}}</p></div>{{end}}
+  {{if .Errors}}
+  <div class="errors" role="alert">
+    <p><strong>That didn't work:</strong></p>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{end}}
+
+  {{if not .Editing}}
+  <section class="panel mega-today">
+    <h2>Today</h2>
+    {{with .Today}}
+    {{if .Up}}
+    <p><a href="/p/{{.PublicID}}">{{.Title}}</a> · {{if .Open}}voting open{{else}}voting closed{{end}}{{if .Locked}} · <strong>comments locked</strong>{{end}}</p>
+    <div class="admin-actions">
+      <form class="inline-form" method="post" action="/p/{{.PublicID}}/lock">
+        {{template "formguard" $.FormToken}}
+        <input type="hidden" name="back" value="{{$.Back}}">
+        {{if .Locked}}<button class="button" type="submit" name="action" value="unlock">unlock comments</button>
+        {{else}}<button class="button" type="submit" name="action" value="lock">lock comments</button>{{end}}
+      </form>
+      {{if .Open}}
+      <form class="inline-form" method="post" action="/p/{{.PublicID}}/poll/close">
+        {{template "formguard" $.FormToken}}
+        <input type="hidden" name="back" value="{{$.Back}}">
+        <button class="button" type="submit">close voting now</button>
+      </form>
+      {{end}}
+    </div>
+    <details class="delete-control">
+      <summary>take it down</summary>
+      <form method="post" action="/admin/polls/today">
+        {{template "formguard" $.FormToken}}
+        <input type="hidden" name="action" value="takedown">
+        <p>Removes the post, comments and all, with the reason in its place, and in the moderation log.
+          The front page box goes straight away. Afterwards you can run tomorrow's now.</p>
+        {{template "removalselect"}}
+        <button class="button button-danger" type="submit">take it down</button>
+      </form>
+    </details>
+    {{else}}
+    <p class="hint">No mega poll is up today.</p>
+    {{if .Next}}
+    <form method="post" action="/admin/polls/today">
+      {{template "formguard" $.FormToken}}
+      <input type="hidden" name="action" value="run-next">
+      <p>Run the next one now, “{{.Next}}”? Everything queued after it moves up a day.</p>
+      <button class="button" type="submit">run it now</button>
+    </form>
+    {{end}}
+    {{end}}
+    {{end}}
+  </section>
+  {{end}}
+
+  <section class="panel">
+    <h2>{{if .Editing}}Change the one for {{.Editing}}{{else}}Add one{{end}}</h2>
+    <form class="form" method="post" action="/admin/polls{{if .Editing}}/{{.Editing}}{{end}}">
+      {{template "formguard" .FormToken}}
+      <input type="hidden" name="action" value="save">
+      {{with .Form}}
+      <div class="field">
+        <label for="day">Day</label>
+        <input id="day" name="day" type="date" value="{{.Day}}" required>
+      </div>
+      <div class="field">
+        <label for="question">Question</label>
+        <input id="question" name="question" type="text" value="{{.Question}}" maxlength="200" required>
+      </div>
+      <div class="field">
+        <label for="body">Text <span class="optional">optional, Markdown</span></label>
+        <textarea id="body" name="body" rows="3" maxlength="2000">{{.Body}}</textarea>
+      </div>
+      <fieldset class="poll-fields">
+        <legend>Options <span class="optional">2 to 6</span></legend>
+        {{range $i, $o := .Options}}
+        <div class="field poll-option-field">
+          <label for="option-{{$i}}" class="visually-hidden">Poll option</label>
+          <input id="option-{{$i}}" name="option" type="text" value="{{$o}}" maxlength="80" placeholder="Option">
+        </div>
+        {{end}}
+      </fieldset>
+      {{template "tagpicker" .Tags}}
+      {{end}}
+      <button class="button" type="submit">{{if .Editing}}Save{{else}}Queue it{{end}}</button>
+      {{if .Editing}}<a href="/admin/polls">cancel</a>{{end}}
+    </form>
+
+    {{if .Editing}}
+    <details class="delete-control">
+      <summary>delete it from the queue</summary>
+      <form method="post" action="/admin/polls/{{.Editing}}">
+        {{template "formguard" .FormToken}}
+        <input type="hidden" name="action" value="delete">
+        <label class="ack"><input type="checkbox" name="confirm" value="1" required> Delete it</label>
+        <button class="button button-danger" type="submit">Delete</button>
+      </form>
+    </details>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <h2>The queue</h2>
+    {{if not .Entries}}<p>Nothing queued.</p>{{end}}
+    <table class="mega-queue">
+      {{range .Entries}}
+      <tr class="{{if .Past}}past{{end}}{{if .Today}} today{{end}}">
+        <th scope="row">{{.Label}}</th>
+        <td>
+          {{if .Published}}<a href="/p/{{.PostPublicID}}">{{.Question}}</a>
+          {{else}}{{.Question}}{{end}}
+          <span class="hint">{{range $i, $o := .Options}}{{if $i}} · {{end}}{{$o}}{{end}}</span>
+          {{if .Problem}}<p class="poll-note">Not published: {{.Problem}}</p>{{end}}
+          {{if .Missed}}<p class="poll-note">Its day passed without it going up. Move it to a new day or delete it.</p>{{end}}
+        </td>
+        <td>{{if .Published}}<span class="hint">published</span>{{else}}<a href="/admin/polls/{{.DayText}}">change</a>{{end}}</td>
+      </tr>
+      {{end}}
+    </table>
+  </section>
+</main>
+{{end}}

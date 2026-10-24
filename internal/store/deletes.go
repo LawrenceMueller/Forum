@@ -21,11 +21,17 @@ import (
 
 // DeletePost erases one of the author's posts. Deleting something already
 // deleted (or someone else's) does nothing.
+//
+// A poll on it goes too, options, totals and all: its options are its words.
 func (s *Store) DeletePost(ctx context.Context, publicID string, authorID int64) error {
 	_, err := s.db.Exec(ctx, `
-		UPDATE posts
-		SET body = '', url = NULL, content_hash = '', deleted_at = now()
-		WHERE public_id = $1 AND author_id = $2 AND deleted_at IS NULL`,
+		WITH erased AS (
+			UPDATE posts
+			SET body = '', url = NULL, content_hash = '', deleted_at = now()
+			WHERE public_id = $1 AND author_id = $2 AND deleted_at IS NULL
+			RETURNING id
+		)
+		DELETE FROM polls WHERE post_id IN (SELECT id FROM erased)`,
 		publicID, authorID)
 	return err
 }
@@ -74,6 +80,9 @@ func eraseAllContent(ctx context.Context, tx pgx.Tx, authorID int64) error {
 		SET body = '', url = NULL, content_hash = '', deleted_at = now()
 		WHERE author_id = $1 AND deleted_at IS NULL`, authorID,
 	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM polls pl USING posts p WHERE p.id = pl.post_id AND p.author_id = $1`, authorID); err != nil {
 		return err
 	}
 

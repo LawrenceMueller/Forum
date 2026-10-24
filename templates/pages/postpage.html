@@ -31,6 +31,7 @@
          little larger than the rest of the line (see .post-byline in style.css). */}}
     <p class="meta">
       {{if .AuthorDeleted}}<span class="author-deleted">[deleted]</span>
+      {{else if .BySite}}<span class="site-author">Snowball</span>
       {{else}}<span class="anon {{.ColorClass}}">{{.Author}}</span>{{end}}
       <span class="tags">{{range .Tags}}<a class="tag{{if ne .Facet "topic"}} tag-{{.Facet}}{{end}}" href="/t/{{.Slug}}">{{.Display}}</a>{{end}}</span>
       <span class="byline-date">{{.Posted.Format "2006-01-02 15:04"}}</span>
@@ -54,17 +55,31 @@
 
     {{if .Deleted}}<p class="hint">This post was deleted by its author.</p>{{end}}
     {{if .BodyHTML}}<div class="post-body">{{.BodyHTML}}</div>{{end}}
+    {{with .Poll}}{{template "poll" .}}{{end}}
   </article>
   {{end}}
   {{end}}
 
   {{if and .IsAdmin (not .Post.Removed)}}
-  <form class="admin-actions" method="post" action="/p/{{.Post.PublicID}}/remove">
-    {{template "formguard" .RemoveToken}}
+  <div class="admin-actions">
     <span class="admin-label">admin</span>
-    {{template "removalselect"}}
-    <button class="button button-danger" type="submit">remove post</button>
-  </form>
+    <form class="inline-form" method="post" action="/p/{{.Post.PublicID}}/remove">
+      {{template "formguard" .RemoveToken}}
+      {{template "removalselect"}}
+      <button class="button button-danger" type="submit">remove post</button>
+    </form>
+    <form class="inline-form" method="post" action="/p/{{.Post.PublicID}}/lock">
+      {{template "formguard" .AdminToken}}
+      {{if .CommentsLocked}}<button class="button" type="submit" name="action" value="unlock">unlock comments</button>
+      {{else}}<button class="button" type="submit" name="action" value="lock">lock comments</button>{{end}}
+    </form>
+    {{with .Post.Poll}}{{if .Open}}
+    <form class="inline-form" method="post" action="/p/{{.PostID}}/poll/close">
+      {{template "formguard" $.AdminToken}}
+      <button class="button" type="submit">close the poll now</button>
+    </form>
+    {{end}}{{end}}
+  </div>
   {{end}}
 
   {{if or (not .Post.Removed) .IsAdmin}}
@@ -73,6 +88,8 @@
 
     {{if .Locked}}
     <p class="hint">This post is closed to new comments.</p>
+    {{else if .CommentsLocked}}
+    <p class="locked-note">🔒 The admin has locked this post: no new comments for now. Everything here stays readable.</p>
     {{else if .ViewerSuspended}}
     <p class="hint">Your account is suspended, so it can't comment for now. <a href="/account/suspension">Why?</a></p>
     {{else if .LoggedIn}}

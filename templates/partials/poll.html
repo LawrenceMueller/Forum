@@ -1,0 +1,65 @@
+{{/*
+  poll.html: a post's poll. Expects a pollView.
+
+  Before voting it's a form (radio buttons, then "vote"); after, or once
+  the poll has closed, it's the results. While a poll is open, its results
+  ask the server for a fresh copy of this box every 15 seconds (hx-get with
+  "every"), which replaces the whole box; snowball.js pauses that while the
+  tab is in the background. The bars are <progress> elements, so no inline
+  styles are needed (the site's security headers forbid them).
+*/}}
+{{define "poll"}}
+<section class="poll" id="poll" aria-labelledby="poll-heading"
+  {{- if .Live}} hx-get="/p/{{.PostID}}/poll" hx-trigger="every {{.Refresh}}, poll-refresh" hx-swap="outerHTML" data-live{{end}}>
+  <h2 class="poll-heading" id="poll-heading">
+    {{if .Mega}}mega poll{{else}}poll{{end}} · {{if .Open}}closes in {{.TimeLeft}}{{else}}closed {{.ClosesAt.Format "2006-01-02 15:04"}}{{end}}
+  </h2>
+
+  {{if .Note}}<p class="poll-note" role="alert">{{.Note}}</p>{{end}}
+
+  {{if .ShowResults}}
+  <ol class="poll-results">
+    {{range .Options}}
+    <li class="poll-result {{.Class}}{{if .Mine}} mine{{end}}{{if .Winner}} winner{{end}}">
+      <span class="poll-label">{{if .Mine}}<span class="poll-check" aria-label="your pick">✓</span> {{end}}{{.Label}}</span>
+      <progress max="100" value="{{.Percent}}" aria-label="{{.Percent}} percent"></progress>
+      <span class="poll-count">{{.Percent}}% <span class="poll-votes">({{.Votes}})</span></span>
+    </li>
+    {{end}}
+  </ol>
+  <p class="poll-meta">{{.Total}} {{if eq .Total 1}}vote{{else}}votes{{end}}
+    {{- if and .Open .Live}} · updates live{{end}}
+    {{- if and .Open (not .Voted)}} · you haven't voted{{end}}</p>
+
+  {{else if .Voted}}
+  {{/* a mega poll after voting: your pick, but no results until it closes */}}
+  <ul class="poll-options-plain">
+    {{range .Options}}<li class="{{.Class}}{{if .Mine}} mine{{end}}">{{if .Mine}}<span class="poll-check" aria-label="your pick">✓</span> {{end}}{{.Label}}</li>{{end}}
+  </ul>
+  <p class="poll-meta">{{.Total}} {{if eq .Total 1}}vote{{else}}votes{{end}} so far · the results come out when it closes, at midnight Pacific time</p>
+
+  {{else if .CanVote}}
+  <form class="poll-form" method="post" action="/p/{{.PostID}}/poll"
+        hx-post="/p/{{.PostID}}/poll" hx-target="#poll" hx-swap="outerHTML">
+    {{template "formguard" .Token}}
+    <fieldset>
+      <legend class="visually-hidden">Your pick</legend>
+      {{range .Options}}
+      <label class="poll-option {{.Class}}"><input type="radio" name="option" value="{{.Index}}" required> {{.Label}}</label>
+      {{end}}
+    </fieldset>
+    <button class="button" type="submit">vote</button>
+    <span class="poll-meta">{{.Total}} {{if eq .Total 1}}vote{{else}}votes{{end}} so far.
+      {{if .Mega}}Results come out when it closes{{else}}Results show once you've voted{{end}}, and votes are final.</span>
+  </form>
+
+  {{else}}
+  <ul class="poll-options-plain">
+    {{range .Options}}<li class="{{.Class}}">{{.Label}}</li>{{end}}
+  </ul>
+  <p class="poll-meta">{{.Total}} {{if eq .Total 1}}vote{{else}}votes{{end}} so far.
+    {{if not .LoggedIn}}<a href="/login">Log in</a> to vote and see the results.
+    {{else if .Reason}}{{.Reason}}{{end}}</p>
+  {{end}}
+</section>
+{{end}}

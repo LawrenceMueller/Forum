@@ -53,6 +53,10 @@ func (s *Store) Purge(ctx context.Context) (PurgeResult, error) {
 		return res, err
 	}
 	res.Posts = int(tag.RowsAffected())
+	// An erased post's poll goes with it: the options are words too.
+	if _, err := tx.Exec(ctx, `DELETE FROM polls pl USING posts p WHERE p.id = pl.post_id AND p.erased_at IS NOT NULL`); err != nil {
+		return res, err
+	}
 
 	tag, err = tx.Exec(ctx, `
 		UPDATE comments SET body = '', content_hash = '', erased_at = now()

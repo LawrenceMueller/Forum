@@ -132,7 +132,7 @@ func write(ctx context.Context, conn *pgx.Conn, w *world, keys *auth.VoterKeys, 
 
 	// Start from empty tables (the seeded tags stay) and IDs from 1.
 	if _, err := tx.Exec(ctx, `TRUNCATE users, sessions, recovery_codes, posts, post_tags, tag_posts, reports, mod_log, suspensions, admin_notes,
-		comments, post_votes, comment_votes RESTART IDENTITY CASCADE`); err != nil {
+		comments, post_votes, comment_votes, polls, poll_options, poll_votes, mega_polls RESTART IDENTITY CASCADE`); err != nil {
 		return err
 	}
 
@@ -184,6 +184,10 @@ func write(ctx context.Context, conn *pgx.Conn, w *world, keys *auth.VoterKeys, 
 		return err
 	}
 
+	if err := writeMegaPolls(ctx, tx, w, keys); err != nil {
+		return fmt.Errorf("writing mega polls: %w", err)
+	}
+
 	// tag_posts lists each post under every tag it shows up under (what
 	// tag pages read); the site keeps it up to date as posts are written,
 	// so here it's filled in one go, like migration 00012 does.
@@ -200,9 +204,18 @@ func write(ctx context.Context, conn *pgx.Conn, w *world, keys *auth.VoterKeys, 
 	}
 	fmt.Printf("  %-14s %10s rows  %6.1fs\n", "tag_posts", commas(tag.RowsAffected()), time.Since(t).Seconds())
 
+	polls := w.makePolls()
+	pollsByPost := map[int32]*seedPoll{}
+	for _, sp := range polls {
+		pollsByPost[sp.post] = sp
+	}
+	if err := writePolls(ctx, tx, w, polls, keys); err != nil {
+		return fmt.Errorf("writing polls: %w", err)
+	}
+
 	err = copyRows(ctx, tx, "comments",
 		[]string{"id", "public_id", "post_id", "parent_id", "author_id", "depth", "body",
-			"created_at", "edited_at", "upvotes", "downvotes", "content_hash", "deleted_at", "removed_at"},
+			"created_at", "edited_at", "upvotes", "downvotes", "content_hash", "deleted_at", "removed_at", "poll_pick"},
 		len(w.comments), func(i int) []any {
 			c := &w.comments[i]
 			p := &w.posts[c.post]
@@ -216,7 +229,7 @@ func write(ctx context.Context, conn *pgx.Conn, w *world, keys *auth.VoterKeys, 
 				hash = store.ContentHash("", "", body)
 			}
 			return []any{c.id, c.publicID, p.id, parent, w.users[c.author].id, int32(c.depth), body,
-				at(c.created), at(c.edited), c.up, c.down, hash, at(c.deleted), at(c.removed)}
+				at(c.created), at(c.edited), c.up, c.down, hash, at(c.deleted), at(c.removed), pollPick(pollsByPost, c)}
 		})
 	if err != nil {
 		return err
@@ -269,6 +282,13 @@ func write(ctx context.Context, conn *pgx.Conn, w *world, keys *auth.VoterKeys, 
 // up: every counter matches the rows it counts, and threads hang together.
 func verify(ctx context.Context, conn *pgx.Conn) error {
 	checks := []struct{ what, sql string }{
+		{"open polls' totals match their votes", `
+			SELECT count(*) FROM poll_options o JOIN polls p ON p.post_id = o.post_id
+			LEFT JOIN (SELECT post_id, position, count(*) AS n FROM poll_votes GROUP BY post_id, position) v
+			       ON v.post_id = o.post_id AND v.position = o.position
+			WHERE p.closes_at > now() AND o.votes <> coalesce(v.n, 0)`},
+		{"closed polls have no fingerprints left", `
+			SELECT count(*) FROM poll_votes v JOIN polls p ON p.post_id = v.post_id WHERE p.closes_at <= now()`},
 		{"post vote counters match post_votes", `
 			SELECT count(*) FROM posts p
 			LEFT JOIN (SELECT post_id, count(*) FILTER (WHERE value = 1) AS up,

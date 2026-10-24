@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"snowball/internal/store"
 )
@@ -46,6 +47,7 @@ func TestSmokeEveryPage(t *testing.T) {
 
 	p := "/p/" + post.PublicID
 	c := p + "/c/" + cid
+	poll := "/p/" + s.pollPost(t, author, "A poll worth answering", time.Hour, "Yes", "No").PublicID
 
 	pages := []struct {
 		path   string
@@ -68,6 +70,9 @@ func TestSmokeEveryPage(t *testing.T) {
 		{p + "?sort=new", nil, 200, "page"},
 		{c, nil, 200, "page"},
 		{"/p/" + removed.PublicID, nil, 200, "page"},
+		{poll, nil, 200, "page"},
+		{poll, reader, 200, "page"},
+		{poll + "/poll", reader, 303, "other"}, // the live box is for htmx only
 		{"/signup", nil, 200, "page"},
 		{"/login", nil, 200, "page"},
 		{"/login?notice=password-changed", nil, 200, "page"},
@@ -75,6 +80,9 @@ func TestSmokeEveryPage(t *testing.T) {
 		{"/goodbye", nil, 200, "page"},
 		{"/rules", nil, 200, "page"},
 		{"/about", nil, 200, "page"},
+		{"/polls", nil, 200, "page"},
+		{"/polls?before=2026-01-01", nil, 200, "page"},
+		{"/polls?before=nonsense", nil, 404, "other"},
 		{"/notes", nil, 200, "page"},
 		{"/modlog", nil, 200, "page"},
 		{"/robots.txt", nil, 200, "other"},
@@ -105,6 +113,9 @@ func TestSmokeEveryPage(t *testing.T) {
 		{"/admin/reports", boss, 200, "page"},
 		{"/admin/domains", boss, 200, "page"},
 		{"/admin/notes", boss, 200, "page"},
+		{"/admin", boss, 200, "page"},
+		{"/admin/polls", boss, 200, "page"},
+		{"/admin/polls/2026-01-01", boss, 404, "other"},
 		{"/admin/users/blue-humming-otter", boss, 200, "page"},
 		{"/account/suspension", reader, 303, "other"}, // not suspended: back to the account page
 		{"/modlog", boss, 200, "page"},
@@ -186,6 +197,7 @@ func TestSmokeFragments(t *testing.T) {
 	reader := s.user(t, "red-baking-hare")
 	post := s.post(t, author, "A post")
 	cid := s.comment(t, post, reader, "A comment")
+	poll := s.pollPost(t, author, "A poll", time.Hour, "Yes", "No")
 
 	for _, f := range []struct {
 		path string
@@ -197,6 +209,8 @@ func TestSmokeFragments(t *testing.T) {
 		{"/signup/name", nil, `name="sig"`},
 		{"/tags/suggest?topics=sour", nil, "choose=sourdough"},
 		{"/tags/pick?choose=sourdough&topics=sour", nil, `id="topics"`},
+		{"/p/" + poll.PublicID + "/poll", reader, `id="poll"`},
+		{"/p/" + poll.PublicID + "/poll", nil, `id="poll"`},
 	} {
 		rec := s.get(f.path, f.who, "HX-Request", "true")
 		expectStatus(t, "htmx GET "+f.path, rec, http.StatusOK)

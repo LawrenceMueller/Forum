@@ -20,7 +20,7 @@ func TestUsernamesAreUniqueForever(t *testing.T) {
 	}
 
 	// ...and neither can anyone after the account is deleted.
-	if err := st.DeleteAccount(ctx, id, "voter-x", false); err != nil {
+	if err := st.DeleteAccount(ctx, id, "voter-x", "pk-x", false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.CreateUser(ctx, "blue-humming-otter", "h", nil); !errors.Is(err, ErrUsernameTaken) {
@@ -178,7 +178,7 @@ func TestDeleteAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := st.DeleteAccount(ctx, me, "my-fingerprint", false); err != nil {
+	if err := st.DeleteAccount(ctx, me, "my-fingerprint", "my-poll-key", false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -223,7 +223,7 @@ func TestDeleteAccountWithEverything(t *testing.T) {
 	mustComment(t, st, theirPost, me, "", "my comment on their post")
 	mustComment(t, st, theirPost, other, "", "their own comment")
 
-	if err := st.DeleteAccount(ctx, me, "my-fingerprint", true); err != nil {
+	if err := st.DeleteAccount(ctx, me, "my-fingerprint", "my-poll-key", true); err != nil {
 		t.Fatal(err)
 	}
 

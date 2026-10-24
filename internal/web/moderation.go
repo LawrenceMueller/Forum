@@ -406,7 +406,7 @@ func (s *Server) handleModerate(w http.ResponseWriter, r *http.Request) {
 				s.renderQueue(w, r, start, []string{"Removed, but couldn't find the author to clean up after."})
 				return
 			}
-			if _, cerr := s.store.Cleanup(r.Context(), acct.ID, s.voters.Voter(acct.ID), reason); cerr != nil {
+			if _, cerr := s.store.Cleanup(r.Context(), acct.ID, s.voters.Voter(acct.ID), s.voters.PollKey(acct.ID), reason); cerr != nil {
 				if errors.Is(cerr, store.ErrCantSuspendAdmin) {
 					s.renderQueue(w, r, start, []string{"Removed. (The admin's own things aren't cleaned up.)"})
 					return
@@ -513,6 +513,12 @@ func (s *Server) handleModLog(w http.ResponseWriter, r *http.Request) {
 			row.What = kind + " put back after review"
 		case "dismiss":
 			row.What = "Reports on a " + strings.ToLower(kind) + " dismissed"
+		case "lock":
+			row.What = "Post locked: no new comments for now"
+		case "unlock":
+			row.What = "Post unlocked"
+		case "close":
+			row.What = "Poll closed early"
 		}
 		if e.Reports > 0 {
 			row.Detail = "after " + strconv.Itoa(e.Reports) + " report"

@@ -1,0 +1,25 @@
+{{/* polls.html: every mega poll so far, newest first, and how it came out. */}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Mega polls</h1>
+  <p class="lede">One question a day, from midnight to midnight Pacific time. Results come out when each one closes.</p>
+
+  {{if not .Polls}}<p class="empty">None yet.</p>{{end}}
+  <ol class="mega-archive">
+    {{range .Polls}}
+    <li>
+      <p class="meta">{{.Date}}{{if .Open}} · <strong>open now</strong>{{end}}</p>
+      <p class="mega-archive-q"><a href="/p/{{.PublicID}}">{{.Question}}</a></p>
+      <p class="meta">
+        {{if .Open}}{{.Total}} {{if eq .Total 1}}vote{{else}}votes{{end}} so far
+        {{else if .Winners}}{{if .Tie}}a tie:{{else}}won by{{end}}
+          {{range $i, $w := .Winners}}{{if $i}} and {{end}}<strong>{{$w}}</strong>{{end}}
+          with {{.WinnerShare}}% of {{.Total}} {{if eq .Total 1}}vote{{else}}votes{{end}}
+        {{else}}no votes{{end}}
+        · <a href="/p/{{.PublicID}}#comments">{{.CommentCount}} {{if eq .CommentCount 1}}comment{{else}}comments{{end}}</a></p>
+    </li>
+    {{end}}
+  </ol>
+  {{if .Older}}<nav class="pager" aria-label="Older polls"><span></span><a href="/polls?before={{.Older}}">older</a></nav>{{end}}
+</main>
+{{end}}

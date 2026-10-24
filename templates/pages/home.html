@@ -5,6 +5,40 @@
   <div class="layout">
     <main>
 
+      {{with .Mega}}
+      <section class="mega-box" aria-labelledby="mega-heading">
+        <p class="mega-kicker">Today's mega poll <a href="/polls">past ones</a></p>
+        <h2 class="mega-question" id="mega-heading"><a href="/p/{{.PublicID}}">{{.Title}}</a></h2>
+        {{with .Poll}}
+        {{if not .Open}}
+        <p class="poll-meta">Voting's closed: {{.Total}} {{if eq .Total 1}}vote{{else}}votes{{end}}. <a href="/p/{{.PostID}}#poll">See how it came out.</a></p>
+        {{else if .ShowResults}}
+        <p class="poll-meta">{{.Total}} {{if eq .Total 1}}vote{{else}}votes{{end}} so far · closes in {{.TimeLeft}}</p>
+        {{else if .Voted}}
+        <p class="mega-picked">{{range .Options}}{{if .Mine}}You picked <strong class="pick {{.Class}}">{{.Label}}</strong>.{{end}}{{end}}
+          {{.Total}} {{if eq .Total 1}}vote{{else}}votes{{end}} so far; the results come out at midnight.</p>
+        {{else if .CanVote}}
+        <form class="poll-form mega-form" method="post" action="/p/{{.PostID}}/poll">
+          {{template "formguard" .Token}}
+          <fieldset>
+            <legend class="visually-hidden">Your pick</legend>
+            {{range .Options}}
+            <label class="poll-option {{.Class}}"><input type="radio" name="option" value="{{.Index}}" required> {{.Label}}</label>
+            {{end}}
+          </fieldset>
+          <button class="button" type="submit">vote</button>
+          <span class="poll-meta">{{.Total}} {{if eq .Total 1}}vote{{else}}votes{{end}} so far · closes in {{.TimeLeft}} · votes are final</span>
+        </form>
+        {{else}}
+        <p class="poll-meta">{{range $i, $o := .Options}}{{if $i}} · {{end}}{{$o.Label}}{{end}}</p>
+        <p class="poll-meta">{{.Total}} {{if eq .Total 1}}vote{{else}}votes{{end}} so far.
+          {{if not .LoggedIn}}<a href="/login">Log in</a> to vote.{{else if .Reason}}{{.Reason}}{{end}}</p>
+        {{end}}
+        {{end}}
+        <p class="mega-more"><a href="/p/{{.PublicID}}#comments">argue about it in the comments</a></p>
+      </section>
+      {{end}}
+
       {{with .Note}}
       <section class="note admin-note-box" aria-label="Note from the admin">
         <p class="note-head"><strong>From the admin, {{.Date}}:</strong></p>

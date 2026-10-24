@@ -83,6 +83,8 @@ type commentNode struct {
 	CanDelete     bool   // the viewer wrote it: a "delete" control (works at any age)
 	DeleteToken   string // for that control's form
 	RemovedAs     string // for the admin: why it was removed ("spam", "hidden by reports")
+	Pick          string // on a poll: the option the author voted for
+	PickClass     string // its colour
 
 	// used while building and sorting, not by templates
 	id, parentID int64
@@ -104,6 +106,8 @@ type treeOptions struct {
 	myVotes     map[int64]int              // the viewer's votes, by comment ID
 	render      func(string) template.HTML // Markdown to HTML: the server's cache (nil: render directly)
 	deleteToken string                     // for "delete" on the viewer's own comments
+	pollLabels  []string                   // the post's poll options, for the pick tags (nil: no poll)
+	locked      bool                       // the admin locked the post: no editing either
 }
 
 func newCommentNode(c store.Comment, o treeOptions) *commentNode {
@@ -150,11 +154,14 @@ func newCommentNode(c store.Comment, o treeOptions) *commentNode {
 		if !c.AuthorDeleted {
 			n.ColorClass = colorClass(c.Author)
 		}
+		if c.PollPick >= 0 && c.PollPick < len(o.pollLabels) {
+			n.Pick, n.PickClass = o.pollLabels[c.PollPick], pickClass(c.PollPick)
+		}
 	}
 
 	n.CanReply = o.canComment && !c.Deleted && (!c.Removed || mineShadowed)
 	if !n.hidden {
-		n.CanEdit, n.EditLeft = canEdit(o.viewer, c.Author, c.AuthorDeleted, c.Removed || c.Deleted, c.CreatedAt)
+		n.CanEdit, n.EditLeft = canEdit(o.viewer, c.Author, c.AuthorDeleted, c.Removed || c.Deleted || o.locked, c.CreatedAt)
 		n.CanReport = o.viewer.canReport(c.Author, c.AuthorDeleted, c.Removed || c.Deleted || o.postClosed)
 		if o.viewer.loggedIn && !c.AuthorDeleted && c.Author == o.viewer.user.Username && o.deleteToken != "" {
 			n.CanDelete, n.DeleteToken = true, o.deleteToken
@@ -354,7 +361,7 @@ func (s *Server) handleReplyForm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if post.Removed || post.Deleted || parent.Removed || parent.Deleted {
+	if post.Removed || post.Deleted || post.Locked || parent.Removed || parent.Deleted {
 		http.Error(w, "This can't be replied to anymore.", http.StatusGone)
 		return
 	}
@@ -445,13 +452,19 @@ func (s *Server) handleComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	publicID, depth, err := s.store.CreateComment(ctx, store.NewComment{
-		PostID: post.ID, ParentPublicID: parentID, AuthorID: u.ID, Body: body,
-	})
+	nc := store.NewComment{PostID: post.ID, ParentPublicID: parentID, AuthorID: u.ID, Body: body}
+	if post.IsPoll {
+		nc.PollVoter = s.pollVoter(u.ID, post.ID) // tags the comment with their pick, if they voted
+	}
+	publicID, depth, err := s.store.CreateComment(ctx, nc)
 	switch {
 	case errors.Is(err, store.ErrPostLocked):
 		s.renderReplyPage(w, r, start, post, parent, body,
 			[]string{"This post was removed or deleted, so it's closed to new comments."})
+		return
+	case errors.Is(err, store.ErrCommentsLocked):
+		s.renderReplyPage(w, r, start, post, parent, body,
+			[]string{"The admin has locked this post, so it takes no new comments for now."})
 		return
 	case errors.Is(err, store.ErrParentGone):
 		s.renderReplyPage(w, r, start, post, parent, body,
@@ -511,6 +524,14 @@ func (s *Server) handleCommentThread(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	if post.IsPoll {
+		poll, err := s.store.PollForPost(r.Context(), post.ID)
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		opts.pollLabels = pollLabels(poll)
+	}
 	data := threadPage{
 		basePage:  newBasePage(r, "thread").withUp("/p/"+post.PublicID, "back to the full thread"),
 		PostID:    post.PublicID,
@@ -529,7 +550,8 @@ func (s *Server) treeOptionsFor(r *http.Request, post store.Post, sortMode strin
 	o := treeOptions{
 		sort:       sortMode,
 		postID:     post.PublicID,
-		canComment: loggedIn && u.Suspension == nil && !post.Removed && !post.Deleted,
+		canComment: loggedIn && u.Suspension == nil && !post.Removed && !post.Deleted && !post.Locked,
+		locked:     post.Locked,
 		isAdmin:    u.IsAdmin,
 		rootID:     rootID,
 		postClosed: post.Removed || post.Deleted,

@@ -2,7 +2,7 @@
 
 This document is the single place to understand Snowball: what it is, how it is built, what exists today and where it lives in the code, and what is planned. Someone who has never seen the project should be able to read it top to bottom and start working on tickets.
 
-Last updated: after the `/about` page and reply notifications (section 7.21, migration 00019), notes from the admin (section 7.20, migration 00018) and deleting from the post page (section 7.15), the first finishing touches, which followed the moderation chapter, all five slices (reports and the queue, suspensions and appeals, cleanup and spam shadowbans, probation and content checks, 30-day erasure; section 7.19, migrations 00013 to 00017; design and decisions in section 11.2), with the startup check that the database has every migration. Before that: the performance pass (section 10, "Performance"), the admin tag page and topic type-ahead (tags v2 Phase 1, finished), tags v2 Phase 1 part A, the tag system v2 design, the voted history views, the seed program and the testing chapter. Next up, to choose with the owner: images (after researching the legal duties, section 11.2), tags Phase 2 (members asking for tags), comment paging, or launch preparation (section 11.4).
+Last updated: after the admin's thread controls (locking comments, closing a poll early, taking today's mega poll down and running the next one; section 7.24, migration 00022), and before that mega polls and the `/admin` hub (section 7.23, migration 00021), which finished the polls chapter begun with polls on posts (section 7.22, migration 00020). Before that: the `/about` page and reply notifications (section 7.21, migration 00019), notes from the admin (section 7.20, migration 00018) and deleting from the post page (section 7.15), the first finishing touches, which followed the moderation chapter, all five slices (reports and the queue, suspensions and appeals, cleanup and spam shadowbans, probation and content checks, 30-day erasure; section 7.19, migrations 00013 to 00017; design and decisions in section 11.2), with the startup check that the database has every migration. Before that: the performance pass (section 10, "Performance"), the admin tag page and topic type-ahead (tags v2 Phase 1, finished), tags v2 Phase 1 part A, the tag system v2 design, the voted history views, the seed program and the testing chapter. Next up, to choose with the owner: images (after researching the legal duties, section 11.2), tags Phase 2 (members asking for tags), or launch preparation (section 11.4).
 
 ---
 
@@ -197,6 +197,9 @@ snowball/
       retention.go          Purge: erasing removed text, deleting handled reports, emptying old suspensions after 30 days.
       notes.go              Notes from the admin.
       replies.go            Reply notifications: the counter bumped with each reply, and the inbox query.
+      polls.go              Polls: creating, voting, totals, per-poll fingerprints, closing.
+      megapolls.go          The mega poll queue, publishing, the /polls archive, running the next one now.
+      locks.go              Locking a post's comments; closing a poll early.
       votes.go              Voting (toggle logic, counts), the viewer's votes, vote state, author lookup.
       edits.go              Editing posts and comments (window and grace enforced in SQL).
       deletes.go            Erasing posts and comments, erasing an account's content, history queries.
@@ -217,6 +220,9 @@ snowball/
       spamchecks.go         Probation, duplicate and blocklist checks on new posts and comments; /admin/domains.
       notes.go              Notes from the admin: the front page box, /notes, /admin/notes.
       replies.go            The reply inbox, /account/replies.
+      polls.go              Polls on posts: the submit fields, the poll box, voting, live results.
+      megapolls.go          Mega polls (publishing, the front page box, /polls, /admin/polls) and the /admin hub.
+      locks.go              The admin's thread controls: lock, close a poll now, take today's mega poll down, run the next.
       posts.go              Submit page, post validation, post view preparation, post page, admin removal.
       comments.go           Comment trees (build, prune, sort, depth rules), Wilson score, reply forms, thread pages.
       votes.go              Vote arrows (widgets), who may vote, vote limits, the vote handler.
@@ -420,6 +426,33 @@ CREATE TABLE comment_votes (
     value       smallint NOT NULL CHECK (value IN (-1, 1)),
     PRIMARY KEY (voter, comment_id)
 );
+
+-- Polls (00020). Any post can carry one; the title is the question.
+CREATE TABLE polls (post_id bigint PRIMARY KEY REFERENCES posts ON DELETE CASCADE, closes_at timestamptz NOT NULL);
+CREATE TABLE poll_options (
+    post_id  bigint REFERENCES polls ON DELETE CASCADE,
+    position smallint CHECK (position BETWEEN 0 AND 5),
+    label    text CHECK (char_length(label) BETWEEN 1 AND 80),
+    votes    integer NOT NULL DEFAULT 0 CHECK (votes >= 0),   -- the running total
+    PRIMARY KEY (post_id, position)
+);
+CREATE TABLE poll_votes (
+    voter    text NOT NULL,          -- per-poll fingerprint: sha256(poll key || ':' || post id)
+    post_id  bigint NOT NULL,
+    position smallint NOT NULL,      -- FK (post_id, position) -> poll_options
+    PRIMARY KEY (post_id, voter)     -- one vote per account per poll; deleted when the poll closes
+);
+-- comments.poll_pick smallint: the option the comment's author voted for (NULL if none).
+
+-- Mega polls (00021): posts.by_site (shown as from "Snowball"), polls.mega (results hidden until close), and the queue:
+CREATE TABLE mega_polls (
+    day date PRIMARY KEY,                     -- a Pacific-time calendar day
+    question text, body text, options text[], -- 1-200 chars, <= 2000, 2-6 options
+    topics text, format text, level text,     -- as typed; matched to tags when published
+    created_by bigint REFERENCES users,       -- becomes the post's (hidden) author
+    post_id bigint UNIQUE REFERENCES posts ON DELETE SET NULL,  -- set once published
+    publish_problem text                      -- why it couldn't be published, if so
+);
 ```
 
 goose also maintains its own `goose_db_version` table.
@@ -435,6 +468,7 @@ goose also maintains its own `goose_db_version` table.
 | Title, URL, body, and comment lengths are within limits. | Length checks. |
 | A post's score always equals upvotes minus downvotes. | `score_matches_votes` check. |
 | One vote per account per post or comment. | Primary keys on the votes tables. |
+| One vote per account per poll, only for an option that exists; 2 to 6 options of 1 to 80 characters. | `poll_votes` primary key and foreign key; `poll_option_*` checks (the 2-option minimum is checked in Go). |
 | Deleted content is erased, not hidden: a deleted post has no body or link (title kept), a deleted comment has no body. | `deleted_post_is_erased`, `deleted_comment_is_erased`. |
 | Codes, sessions, tags links, comments, and votes never outlive their parent row. | `ON DELETE CASCADE` (only fires on hard deletes; soft deletes clean up explicitly). |
 
@@ -442,7 +476,7 @@ Rules enforced in Go rather than the database: 1 to 3 topics plus at most one fo
 
 ### Deliberately not stored
 
-Email, IP addresses, user agents, device names, locations, last-login time, login history, recovery timestamps (used codes are deleted), which account cast a vote (only a keyed fingerprint), when a vote was cast, and anything identifying in logs.
+Email, IP addresses, user agents, device names, locations, last-login time, login history, recovery timestamps (used codes are deleted), which account cast a vote (only a keyed fingerprint), when a vote was cast, poll vote fingerprints once a poll has closed (only the totals stay), and anything identifying in logs.
 
 ### Migration history
 
@@ -466,6 +500,9 @@ Email, IP addresses, user agents, device names, locations, last-login time, logi
 | 00017_retention.sql | `erased_at` on posts and comments (with constraints that erased means empty, and removed comments allowed an empty body once erased); partial indexes for the hourly sweep. Its Down fails once any comment has been erased. |
 | 00018_admin_notes.sql | `admin_notes (body, created_at, edited_at, hidden_at)`: notes from the admin, in Markdown. |
 | 00019_reply_notifications.sql | `users.unread_replies` (counter for the header) and `users.replies_seen_at` (when the inbox was last opened). Nothing else about replies is stored. |
+| 00020_polls.sql | `polls (post_id, closes_at)`, `poll_options (post_id, position, label, votes)`, `poll_votes (voter, post_id, position)` with per-poll fingerprints, `comments.poll_pick`. |
+| 00021_mega_polls.sql | `posts.by_site`, `polls.mega`, and the `mega_polls` queue (one entry per day; `post_id` once published; `publish_problem`). |
+| 00022_locks.sql | `posts.locked_at`; log actions `lock`, `unlock`, `close`. |
 | 00009_erase_deleted_content.sql | `deleted_post_is_erased`; comment body may be empty only when deleted; `deleted_comment_is_erased`. |
 
 ### Query conventions
@@ -505,6 +542,13 @@ All queries use `$1`-style placeholders, never string building with input (no SQ
 | GET, POST `/admin/notes` | `handleAdminNotes`, `handleAdminNoteChange` (notes.go) | noStore; admin only | Write, edit, hide, show, delete (with a confirm box) notes. |
 | GET `/about` | `handleAbout` (moderation.go) | | What Snowball is, what it knows about you, what it keeps, who runs it. A draft in the owner's voice; every claim must stay true of the code. Linked from the sidebar and the footer. |
 | GET `/rules` | `handleRules` (moderation.go) | | The rules the removal reasons point at. |
+| GET `/polls` | `handlePollArchive` (megapolls.go) | | Every published mega poll still up, newest day first, with its winner(s); `?before=YYYY-MM-DD` for older (30 a page). Linked from the footer and the front page box. |
+| POST `/p/{id}/lock` | `handleLock` (locks.go) | noStore; admin only (404 for others) | `action=lock` or `unlock`; returns to `back` (or the post). |
+| POST `/p/{id}/poll/close` | `handleClosePoll` (locks.go) | noStore; admin only | Ends the poll now; returns to `back`. |
+| POST `/admin/polls/today` | `handleMegaToday` (locks.go) | noStore; admin only | `action=takedown` (with `reason`): removes today's mega poll post; `action=run-next`: once today's is down (or there's none), publishes the next queued one and moves the rest up a day. |
+| GET `/admin` | `handleAdminHub` (megapolls.go) | noStore; admin only | The admin's starting point: links to every admin page, open reports and appeals, today's mega poll and how far the queue runs. The account page links here. |
+| GET, POST `/admin/polls` | `handleAdminPolls`, `handleAdminPollChange` (megapolls.go) | noStore; admin only | The mega poll queue (from a week ago on) and the form to add one. Queuing one for today publishes it at once. |
+| GET, POST `/admin/polls/{day}` | same | noStore; admin only | Change a queued (unpublished) one, or `action=delete` with `confirm=1`. A published one redirects to its post. |
 | GET, POST `/admin/tags` | `handleAdminTags`, `handleAdminCreateTag` (tagadmin.go) | noStore; admin only (`adminOnly`, 404 for others) | Every tag (filter with `?q=`), health warnings, the new-tag form. |
 | GET `/admin/tags/{tag}` | `handleAdminTag` | noStore; admin only | One tag's admin page. An old name or alias 303s to the current slug's page. |
 | POST `/admin/tags/{tag}/details`, `/parents`, `/aliases`, `/merge`, `/delete` | `handleAdminTag…` | noStore; admin only | The changes (section 7.11). Success redirects with `?done=<code>` for the notice; a refusal shows the page again with the reason. |
@@ -517,6 +561,8 @@ All queries use `$1`-style placeholders, never string building with input (no SQ
 | GET/POST `/p/{id}/c/{cid}/edit` | `handleEditCommentForm`, `handleEditComment` (edit.go) | noStore; POST: limit `comment` | Author only. htmx: inline form and swap; otherwise a page. |
 | POST `/p/{id}/c/{cid}/delete` | `handleDeleteComment` (history.go) | limit `comment`, noStore | Author only. Erases; returns to `back`. |
 | POST `/vote` | `handleVote` (votes.go) | limit `vote`, noStore | htmx: arrows fragment; otherwise redirect to `back`. |
+| POST `/p/{id}/poll` | `handlePollVote` (polls.go) | limit `vote`, noStore, notSuspended | `option=N`. htmx: the poll box; otherwise redirect to `/p/{id}#poll`. |
+| GET `/p/{id}/poll` | `handlePollBox` (polls.go) | limit `pollBox`, noStore | htmx only (others are redirected to the post): the poll box, for the live refresh every 15 s. |
 | GET/POST `/signup`, GET `/signup/name` | signup.go | limits `names`/`signup`, noStore | |
 | GET/POST `/login`, POST `/logout` | login.go | POST login: limit `login`, noStore | Logout deletes all sessions. |
 | GET `/account`, POST `/account/password`, POST `/account/delete`, GET `/goodbye` | account.go | password/delete: limit `login`, noStore | |
@@ -524,7 +570,7 @@ All queries use `$1`-style placeholders, never string building with input (no SQ
 | GET/POST `/recover`, GET `/recovered` | recover.go | POST: limit `recover`, noStore | |
 | GET `/static/...` | Go file server | revalidate | |
 
-Linked but not built yet (404): `/about`. Planned: `/rules`, `/changelog`. There is no public profile page listing a user's history (section 8); the only history view is the owner's private one.
+Planned: `/changelog`. There is no public profile page listing a user's history (section 8); the only history view is the owner's private one.
 
 ### 7.2 Sign-up flow
 
@@ -778,6 +824,34 @@ A reply to you is a comment directly under one of your comments, or a top-level 
 
 **Push notifications later.** The design is ready for them: a "push subscriptions" table (opt-in per device), a service worker and manifest so the site installs as an app, and a sender called from `notifyReply`. Pings would carry no content ("You have new replies on Snowball"), since the delivery services (Apple, Google, Mozilla) see that a ping happened, though not what it says. Decided: wait until there are real users who want it.
 
+### 7.22 Polls (web/polls.go, store/polls.go)
+
+Any post can carry a poll: the submit form's "Add a poll" section (a `<details>`, so no JavaScript) takes 2 to 6 options (up to 80 characters, plain text, no duplicates; empty slots are skipped) and how long it stays open (3 hours, 12 hours, 1 day, 3 days, a week). Like the title and link, the options and closing time can't be changed after posting, so nobody's vote ends up behind different words. Lists mark poll posts `[poll]`.
+
+**Voting.** Same eligibility as the arrows: logged in, past the first day, not suspended. Votes are final. Before voting you see the options and the vote count; after, the results (bars are `<progress>` elements, since the CSP forbids inline styles), with your pick ticked. Open results refresh themselves every 15 seconds: htmx `hx-trigger="every 15s, poll-refresh"` on the box, replaced whole, so a closed poll stops refreshing by itself; snowball.js skips refreshes while the tab is hidden and fires `poll-refresh` when it comes back. Logged-out visitors see options and the count until the poll closes. Once closed, everyone sees the final results, the leader (or tied leaders) starred. The admin always sees results. A shadowbanned account's vote looks counted in its response (without the live refresh, which would give it away) and is never stored. A removed or deleted post's poll takes no votes.
+
+**Pick tags.** A comment on a poll by someone who voted shows their pick by their name, in the option's colour (`pick-0`..`pick-5`, shared with the bars). It's stored on the comment (`comments.poll_pick`) when it's written, or set on their earlier comments there when they vote, so it survives the fingerprints being deleted. Voting alone shows nothing to anyone; commenting on a poll you voted in shows your side. This is the one public link between an account and a vote, and it was the owner's call (no opt-in checkbox).
+
+**Privacy.** `poll_votes.voter` is `sha256(poll key + ":" + post id)`, where the poll key is `HMAC(vote secret, "poll:" + account id)` (`auth.VoterKeys.PollKey`, never stored). So an account has a different fingerprint in every poll, and a leaked database can't line one person's picks up across polls. The store can still find an account's votes in every poll from its key alone, in SQL (`pollFingerprintSQL`; a test checks it matches Go's `store.PollVoter`), which cleanups, shadowbans (`withdrawPollVotes`, which also corrects the totals) and account deletion (`cutPollVotesLoose`: votes keep counting, fingerprints become random) rely on. Every 5 minutes the housekeeping loop (cmd/snowball) runs `ClosePolls`, deleting the fingerprints of closed polls; only the totals remain. Deleting a post deletes its poll (the options are its words), as do account erasure and the 30-day erasure of removed posts.
+
+**Seed.** About one post in 40 carries a poll (cmd/seed/polls.go): polls on posts from the last three days are open, with fingerprints made the way the site makes them, so a seeded account that voted sees its pick; older ones are closed, totals only. Comments carry their author's pick.
+
+### 7.23 Mega polls and the admin hub (web/megapolls.go, store/megapolls.go)
+
+**The daily question.** The admin queues mega polls at `/admin/polls`, one per day: a question, optional Markdown text, 2 to 6 options, and topics (the usual tag picker). Days are calendar days in Pacific time (`siteZone`, with `time/tzdata` built in so the server needs no time zone files). Once a minute (`statsLoop`) and at startup, `publishMegaPolls` publishes today's entry: an ordinary post with a poll, `by_site` (shown everywhere as from "Snowball", with a snowflake, never the admin's name), its poll `mega`, closing at the next Pacific midnight (`dayEnd`, which handles the 23- and 25-hour days). Topics are matched to tags at publish time, so tag renames and merges in between are fine; if they no longer match, it isn't published and `publish_problem` shows on `/admin` and the queue. Queued entries can be changed, moved to a free day, or deleted until published; after that it's a post with the usual rules (the admin is its real author, so the edit window and delete work). A day that passes without its entry going up shows as missed.
+
+**On the site.** Today's mega poll is kept in memory (`megaToday`) and gets a box at the top of the front page: the question, then a plain vote form that sends people to the post (or "You picked X", or a log-in link). It also appears in the normal lists and tag pages, marked `[mega poll]`. Its results stay hidden until it closes, even after voting: voters see their pick and the running total (which refreshes live on the post page); the admin always sees results. Pick tags on comments still show. Comments on Snowball's own posts don't notify the admin or fill their inbox (`notifyReply` gets 0; `Replies` skips `by_site` posts); replies to the admin's own comments there still do. `/polls` is the public archive: each day's question, the winner (or a tie) with its share of the votes, and the comment count; open ones say "open now" with no result.
+
+**The hub.** `/admin` gathers every admin page (reports with the open count and appeals, the moderation log, blocked sites, account lookup, notes, tags) and the mega poll status: today's question, a warning if it couldn't be published or there's none, and how far the queue runs. The account page's admin panel is now one link to it.
+
+**Seed.** cmd/seed/megapolls.go adds 21 closed mega polls (totals only), today's (open, with fingerprints), and a week queued ahead, all from the admin account as "Snowball".
+
+### 7.24 Thread controls (web/locks.go, store/locks.go)
+
+For a thread that's getting out of hand, short of removing it. On any post's page the admin's bar now has **lock comments** / **unlock comments** and, for an open poll, **close the poll now**, next to "remove post". Locking (`posts.locked_at`) stops new comments, replies and comment edits (the reply form, `CreateComment` and `EditComment` all refuse; the post page says "The admin has locked this post"); everything stays readable, and votes, reports and deleting your own comment still work. Closing a poll sets its close time to now, deletes its fingerprints at once, and shows everyone the results (for a mega poll too). All three go in the public moderation log ("Post locked: no new comments for now", "Post unlocked", "Poll closed early").
+
+For mega polls, `/admin/polls` has a **Today** panel: the poll's state, lock/unlock and close-voting buttons, and **take it down** (a removal with a reason; the front page box goes at once, as it does whenever today's is removed or closed, via `refreshMegaToday`). With nothing up today, it offers **run it now** for the next queued question (`RunNextNow`): today's taken-down entry leaves the queue (its post stays removed), every unpublished entry after today moves up a day (gaps kept), and the new today's is published straight away. It refuses while today's is still up, or when today's hasn't gone up yet (fix or delete that one instead), or when nothing's queued. Editing a published question was left out on purpose: votes must stay behind the words they were cast for.
+
 ## 8. Product decisions log
 
 | Decision | Reasoning |
@@ -829,6 +903,17 @@ A reply to you is a comment directly under one of your comments, or a top-level 
 | Deletion erases content from the database, irreversibly | Store as little as possible; hidden text can still leak through backups or bugs. Authorship links remain, for moderation. |
 | Own removed content stays visible to its author, labeled | Being straightforward with people about their own content. |
 | "Up" links to each page's logical parent, not browser-style "back" | Predictable however someone arrived, no JavaScript; the logo still goes home. |
+| Any post can be a poll; mega polls (step 2) are polls the admin schedules | One voting system, one results display, one set of moderation rules. |
+| Poll options and length fixed at posting | The same rule as titles and links: votes must stay behind the words they were cast for. Stricter than "lock at the first vote", and simpler. |
+| Poll votes are final, results after voting, live while open | A pick should mean something; hiding results until you vote stops the early count from steering everyone. Live refresh makes the site feel alive. |
+| Pick tags on poll comments, always on | The owner's call: it's what makes the arguing fun. Voting alone stays private; commenting shows your side. |
+| Poll fingerprints differ per poll and are deleted at close | Store as little as possible: once nobody can vote again, nothing needs to know who voted. |
+| Mega polls are from "Snowball" | The owner's call: it's the site asking, not one member. The admin is still the stored author, for moderation and editing. |
+| Mega poll results hidden until midnight, even from voters | The suspense is the point: people come back the next day to see how it came out. |
+| Mega polls also appear in the normal lists | Two ways in (the box and browsing); one comment thread. |
+| Lock and close-early before removal | Gentler tools for a heated thread: stop the fire without erasing the poll or the decent comments. |
+| Taking down today's mega poll can pull the next one forward, shifting the queue | The owner's call: a mistake shouldn't leave the front page empty, and nothing goes missing from the queue. |
+| One `/admin` hub; no general "events" system yet | Build sections when there's a real second kind of event. |
 | When in doubt, learn from Reddit's battles | Twenty years of fighting spam and manipulation behind its odd-looking rules. |
 
 ---
@@ -1058,3 +1143,7 @@ VPS with Docker Compose running Postgres, Snowball, and Caddy (automatic HTTPS).
 | sqlc | Considered; on Windows its Postgres parser needs cgo, so run it via Docker if adopted. |
 | More testing | A red-team bot to attack the defenses from outside; load testing before launch; browser tests if the JavaScript grows. |
 | Pinned tool versions | staticcheck and govulncheck run `@latest`. If upstream surprises become a nuisance, pin them with Go's `tool` directive in go.mod (`go get -tool ...`) and run them with `go tool`. |
+
+### 11.6 Polls: done, and ideas for later
+
+Both steps are built (sections 7.22 and 7.23). Ideas, not planned: a weekly bracket (8 options narrowed over 7 days), polls tied to a tag, members suggesting mega poll questions into the queue, hiding pick tags on mega polls until they close (the owner chose to keep them visible).

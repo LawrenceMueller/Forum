@@ -2,7 +2,7 @@
 {{define "content"}}
 <main class="narrow">
   <h1 class="page-title">New post</h1>
-  <p class="lede">A title, plus a link, some text, or both.</p>
+  <p class="lede">A title, plus a link, some text, or both. Or ask a question and add a poll.</p>
 
   {{if .Errors}}
   <div class="errors" role="alert">
@@ -45,6 +45,26 @@
         <p>No images, headings, or HTML.</p>
       </details>
     </div>
+
+    {{with .Poll}}
+    <details class="poll-fields"{{if index .Options 0}} open{{end}}>
+      <summary>Add a poll</summary>
+      <p class="hint">Your title is the question. Fill in 2 to 6 options; empty ones are left out.
+        Options can't be changed after posting, and neither can how long it's open.</p>
+      {{range $i, $o := .Options}}
+      <div class="field poll-option-field">
+        <label for="option-{{$i}}" class="visually-hidden">Poll option</label>
+        <input id="option-{{$i}}" name="option" type="text" value="{{$o}}" maxlength="80" placeholder="Option">
+      </div>
+      {{end}}
+      <div class="field">
+        <label for="closes">Open for</label>
+        <select id="closes" name="closes">
+          {{range .Durations}}<option value="{{.Value}}"{{if eq .Value $.Poll.Closes}} selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+      </div>
+    </details>
+    {{end}}
 
     {{template "tagpicker" .Tags}}
 

@@ -85,6 +85,7 @@ type homePage struct {
 	MoreActive bool // there are more active posts than fit on the front page
 	Tags       []tagLink
 	Note       *noteView // the newest note from the admin; nil for none
+	Mega       *megaBox  // today's mega poll; nil for none
 }
 
 // GET /
@@ -113,7 +114,14 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mega, err := s.megaBoxFor(r)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+
 	data := homePage{
+		Mega:       mega,
 		basePage:   newBasePage(r, "front page"),
 		Nav:        navFor(r, "front"),
 		Popular:    popularViews,

@@ -45,6 +45,16 @@ func (v *VoterKeys) Reporter(userID int64) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
+// PollKey returns an account's poll key. It's never stored: the store mixes
+// it with a poll's ID (store.PollVoter) to get the fingerprint for that one
+// poll, so the same account has a different fingerprint in every poll and
+// its picks can't be lined up across polls, even from a leaked database.
+func (v *VoterKeys) PollKey(userID int64) string {
+	mac := hmac.New(sha256.New, v.key)
+	mac.Write([]byte("poll:" + strconv.FormatInt(userID, 10)))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
 // Voter returns the fingerprint for an account.
 func (v *VoterKeys) Voter(userID int64) string {
 	mac := hmac.New(sha256.New, v.key)

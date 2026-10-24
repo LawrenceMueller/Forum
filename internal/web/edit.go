@@ -47,6 +47,8 @@ func (s *Server) editingAllowed(userID int64) string {
 
 const closedMessage = "The 10-minute editing window has closed, so this is final now."
 
+const lockedMessage = "The admin has locked this post, so its comments can't be added to or edited for now."
+
 // ---- editing a post ----
 
 type editPostPage struct {
@@ -218,7 +220,9 @@ func (s *Server) newCommentEditForm(r *http.Request, post store.Post, c store.Co
 		Inline:    r.Header.Get("HX-Request") == "true",
 		FormToken: s.formToken(formEditComment),
 	}
-	if left, ok := editTimeLeft(c.CreatedAt, time.Now()); ok && !c.Removed && !c.Deleted {
+	if post.Locked {
+		f.Closed, f.Error = true, lockedMessage
+	} else if left, ok := editTimeLeft(c.CreatedAt, time.Now()); ok && !c.Removed && !c.Deleted {
 		f.TimeLeft = friendlyDuration(left)
 	} else {
 		f.Closed, f.Error = true, closedMessage
@@ -293,7 +297,11 @@ func (s *Server) handleEditComment(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := s.store.EditComment(r.Context(), c.PublicID, u.ID, body)
 	if errors.Is(err, store.ErrEditClosed) {
-		s.showCommentEdit(w, r, start, post, s.newCommentEditForm(r, post, c, body, closedMessage))
+		msg := closedMessage
+		if p, _, _ := s.store.PostByPublicID(r.Context(), post.PublicID); p.Locked {
+			msg = lockedMessage // locked since the form was opened
+		}
+		s.showCommentEdit(w, r, start, post, s.newCommentEditForm(r, post, c, body, msg))
 		return
 	}
 	if err != nil {

@@ -42,6 +42,9 @@ func (s *Server) statsLoop() {
 	for range time.Tick(time.Minute) {
 		s.refreshStats()
 		s.refreshReports()
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		s.publishMegaPolls(ctx) // today's mega poll goes up within a minute of midnight
+		cancel()
 	}
 }
 

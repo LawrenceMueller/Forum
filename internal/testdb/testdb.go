@@ -43,4 +43,4 @@ func Prepare(name string) (string, error) {
 // database; the tag tree's tables (tags, tag_parents, tag_aliases, tag_closure)
 // hold the starter tree from the migrations and are deliberately left alone.
 const Tables = `users, sessions, recovery_codes, posts, post_tags, tag_posts, reports, mod_log, suspensions, blocked_domains, admin_notes,
-	comments, post_votes, comment_votes`
+	comments, post_votes, comment_votes, polls, poll_options, poll_votes, mega_polls`

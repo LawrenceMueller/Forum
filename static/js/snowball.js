@@ -73,3 +73,18 @@ document.addEventListener("keydown", function (e) {
     input.focus();
   }
 });
+
+// ---- live poll results ----
+// An open poll's results refresh themselves every 15 seconds (htmx's
+// "every" trigger; see partials/poll.html). There's no point while the tab
+// is in the background, so skip those requests, and catch up straight away
+// when it comes back.
+document.body.addEventListener("htmx:beforeRequest", function (e) {
+  if (document.hidden && e.detail.elt.hasAttribute("data-live")) e.preventDefault();
+});
+document.addEventListener("visibilitychange", function () {
+  if (document.hidden || typeof htmx === "undefined") return;
+  document.querySelectorAll("[data-live]").forEach(function (el) {
+    htmx.trigger(el, "poll-refresh");
+  });
+});

@@ -114,28 +114,41 @@ func main() {
 	log.Println("stopped")
 }
 
-// housekeeping runs at startup and then every hour, until ctx is cancelled
-// at shutdown: it deletes expired sessions, and lets go of what moderation
-// has kept past its 30 days (store.Purge).
+// housekeeping runs at startup and then every 5 minutes, until ctx is
+// cancelled at shutdown. Each time, it lets go of the vote fingerprints of
+// polls that have closed (store.ClosePolls), so they outlive their poll by
+// minutes at most. Once an hour it also deletes expired sessions, and lets
+// go of what moderation has kept past its 30 days (store.Purge).
 func housekeeping(ctx context.Context, st *store.Store) {
-	ticker := time.NewTicker(time.Hour)
+	const tick = 5 * time.Minute
+	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
 
-	for {
-		n, err := st.DeleteExpiredSessions(ctx)
+	for round := 0; ; round++ {
+		n, err := st.ClosePolls(ctx)
 		switch {
 		case err != nil && ctx.Err() == nil:
-			log.Printf("session cleanup: %v", err)
+			log.Printf("closing polls: %v", err)
 		case n > 0:
-			log.Printf("session cleanup: removed %d expired sessions", n)
+			log.Printf("closing polls: let go of %d vote fingerprints", n)
 		}
 
-		res, err := st.Purge(ctx)
-		switch {
-		case err != nil && ctx.Err() == nil:
-			log.Printf("retention: %v", err)
-		case res.Any():
-			log.Printf("retention: %s", res) // counts only, never content
+		if round%int(time.Hour/tick) == 0 {
+			n, err := st.DeleteExpiredSessions(ctx)
+			switch {
+			case err != nil && ctx.Err() == nil:
+				log.Printf("session cleanup: %v", err)
+			case n > 0:
+				log.Printf("session cleanup: removed %d expired sessions", n)
+			}
+
+			res, err := st.Purge(ctx)
+			switch {
+			case err != nil && ctx.Err() == nil:
+				log.Printf("retention: %v", err)
+			case res.Any():
+				log.Printf("retention: %s", res) // counts only, never content
+			}
 		}
 
 		select {

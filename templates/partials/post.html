@@ -11,10 +11,12 @@
     {{/* The title always opens the post; for link posts, the domain beside it
          goes straight to the link. (The post page's title links out too.) */}}
     <a class="title" href="{{.Href}}">{{.Title}}</a>
+    {{- if .IsMega}} <span class="poll-mark mega-mark">[mega poll]</span>{{else if .IsPoll}} <span class="poll-mark">[poll]</span>{{end}}
     {{if .Domain}}<a class="domain" href="{{.Link}}" rel="nofollow ugc noopener">({{.Domain}})</a>{{end}}
     <span class="tags">{{range .Tags}}<a class="tag{{if ne .Facet "topic"}} tag-{{.Facet}}{{end}}" href="/t/{{.Slug}}">{{.Display}}</a>{{end}}</span>
     <p class="meta">{{.Posted.Format "2006-01-02 15:04"}} by
       {{if .AuthorDeleted}}<span class="author-deleted">[deleted]</span>
+      {{else if .BySite}}<span class="site-author">Snowball</span>
       {{else}}<span class="anon {{.ColorClass}}">{{.Author}}</span>{{end}}
       | <a href="/p/{{.PublicID}}">{{.Comments}} {{if eq .Comments 1}}comment{{else}}comments{{end}}</a>
       {{- if .ShowLastReply}}, last reply {{.LastActivity.Format "2006-01-02 15:04"}}{{end}}</p>

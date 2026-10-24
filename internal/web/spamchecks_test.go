@@ -132,7 +132,7 @@ func TestDomainBlocklist(t *testing.T) {
 	submit = s.send("/submit", form("title", "Deals", "url", "https://shop.spam.example/deal", "topics", "technology",
 		"form_token", s.token(formSubmit)), me)
 	expectRedirect(t, "after unblocking", submit, "/p/")
-	if !strings.Contains(s.get("/account", boss).Body.String(), `href="/admin/domains"`) {
-		t.Error("the admin's account page should link to the blocklist")
+	if !strings.Contains(s.get("/admin", boss).Body.String(), `href="/admin/domains"`) {
+		t.Error("the admin page should link to the blocklist")
 	}
 }

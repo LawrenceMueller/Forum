@@ -440,7 +440,7 @@ func (s *Server) handleAdminCleanup(w http.ResponseWriter, r *http.Request) {
 		s.renderAdminUser(w, r, start, []string{"Tick the box to confirm the cleanup."})
 		return
 	}
-	_, err := s.store.Cleanup(r.Context(), acct.ID, s.voters.Voter(acct.ID), reason)
+	_, err := s.store.Cleanup(r.Context(), acct.ID, s.voters.Voter(acct.ID), s.voters.PollKey(acct.ID), reason)
 	if errors.Is(err, store.ErrCantSuspendAdmin) {
 		s.renderAdminUser(w, r, start, []string{"The admin's own things can't be cleaned up this way."})
 		return
@@ -466,7 +466,7 @@ func (s *Server) handleAdminShadowban(w http.ResponseWriter, r *http.Request) {
 		s.renderAdminUser(w, r, start, []string{"Tick the box to confirm this account is a spam bot."})
 		return
 	}
-	err := s.store.SetShadowban(r.Context(), acct.ID, s.voters.Voter(acct.ID), on)
+	err := s.store.SetShadowban(r.Context(), acct.ID, s.voters.Voter(acct.ID), s.voters.PollKey(acct.ID), on)
 	if errors.Is(err, store.ErrCantSuspendAdmin) {
 		s.renderAdminUser(w, r, start, []string{"The admin account can't be shadowbanned."})
 		return

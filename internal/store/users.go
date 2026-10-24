@@ -134,11 +134,12 @@ func (s *Store) ChangePassword(ctx context.Context, userID int64, newHash string
 //
 // voter is the account's vote fingerprint. Its votes keep counting, but their
 // fingerprints are swapped for random values, so they can never be traced
-// back to the account, even by someone holding the vote secret.
+// back to the account, even by someone holding the vote secret. pollKey
+// (auth.VoterKeys.PollKey) does the same for its votes in open polls.
 //
 // With eraseContent, every post and comment the account wrote is erased too
 // (see eraseAllContent), all in the same transaction.
-func (s *Store) DeleteAccount(ctx context.Context, userID int64, voter string, eraseContent bool) error {
+func (s *Store) DeleteAccount(ctx context.Context, userID int64, voter, pollKey string, eraseContent bool) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -172,6 +173,9 @@ func (s *Store) DeleteAccount(ctx context.Context, userID int64, voter string, e
 		); err != nil {
 			return err
 		}
+	}
+	if err := cutPollVotesLoose(ctx, tx, pollKey); err != nil {
+		return err
 	}
 	return tx.Commit(ctx)
 }

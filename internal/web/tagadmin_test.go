@@ -43,7 +43,7 @@ func TestTagAdminIsForAdminsOnly(t *testing.T) {
 		t.Fatal("a non-admin created a tag")
 	}
 	// No admin links for them either.
-	expectMissing(t, "account", s.get("/account", author), "/admin/tags")
+	expectMissing(t, "account", s.get("/account", author), `href="/admin"`)
 	expectMissing(t, "tag page", s.get("/t/bread", author), "edit this tag")
 }
 
@@ -52,7 +52,7 @@ func TestTagAdminCreateRenameAndReparent(t *testing.T) {
 	cleanTestTags(t)
 	boss := admin(t, s.user(t, "green-napping-puffin"))
 
-	expectContains(t, "account link", s.get("/account", boss), `href="/admin/tags"`)
+	expectContains(t, "admin page link", s.get("/admin", boss), `href="/admin/tags"`)
 	expectContains(t, "edit link", s.get("/t/bread", boss), `href="/admin/tags/bread">edit this tag`)
 	index := s.get("/admin/tags", boss)
 	expectStatus(t, "index", index, http.StatusOK)

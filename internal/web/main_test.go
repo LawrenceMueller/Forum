@@ -15,6 +15,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"html"
@@ -26,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"snowball/internal/auth"
@@ -104,7 +106,21 @@ func newSite(t *testing.T) *site {
 	if testStore == nil {
 		t.Skip("request-level tests skipped (-short)")
 	}
-	sqlExec(t, `TRUNCATE `+testdb.Tables+` RESTART IDENTITY CASCADE`)
+	// The previous test's server may still be counting posts in the
+	// background (handleSubmit's "go s.refreshStats()"), and Postgres can
+	// pick the TRUNCATE as the loser of the resulting deadlock. Try again.
+	for attempt := 1; ; attempt++ {
+		_, err := rawDB.Exec(ctx, `TRUNCATE `+testdb.Tables+` RESTART IDENTITY CASCADE`)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "40P01" && attempt < 5 {
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+		if err != nil {
+			t.Fatalf("emptying the tables: %v", err)
+		}
+		break
+	}
 	srv, err := New(testStore, Config{VoteSecret: strings.Repeat("test-vote-secret-", 3)})
 	if err != nil {
 		t.Fatal(err)

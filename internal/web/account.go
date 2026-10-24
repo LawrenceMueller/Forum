@@ -187,7 +187,7 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	eraseContent := r.PostForm.Get("erase_content") == "yes"
-	if err := s.store.DeleteAccount(ctx, u.ID, s.voters.Voter(u.ID), eraseContent); err != nil {
+	if err := s.store.DeleteAccount(ctx, u.ID, s.voters.Voter(u.ID), s.voters.PollKey(u.ID), eraseContent); err != nil {
 		serverError(w, err)
 		return
 	}

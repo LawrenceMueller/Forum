@@ -33,6 +33,7 @@ type submitPage struct {
 	Errors    []string
 	FormToken string
 	LinksFrom string // during probation: when links unlock ("" otherwise)
+	Poll      pollForm
 }
 
 // renderSubmit shows the submit form, keeping whatever was typed so a
@@ -41,6 +42,9 @@ func (s *Server) renderSubmit(w http.ResponseWriter, r *http.Request, start time
 	form.Tags = s.tagFieldsFor(sel)
 	form.basePage = newBasePage(r, "new post").withUp("/", "front page")
 	form.FormToken = s.formToken(formSubmit)
+	if form.Poll.Options == nil {
+		form.Poll = newPollForm(nil, "")
+	}
 	if u, ok := userFrom(r.Context()); ok && !u.IsAdmin {
 		if fresh, until := onProbation(u); fresh {
 			form.LinksFrom = until.Format("2006-01-02 15:04")
@@ -98,6 +102,9 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	errs = append(errs, validatePost(form.Title, form.URL, form.Body)...)
 	errs = append(errs, tagProblems...)
+	poll, pollForm, pollProblems := pollFromForm(r, time.Now())
+	form.Poll = pollForm
+	errs = append(errs, pollProblems...)
 	if len(errs) == 0 {
 		errs = append(errs, s.linkProblems(u, form.URL, form.Body)...) // probation, blocklist
 	}
@@ -133,6 +140,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		URL:      normalizeURL(form.URL),
 		Body:     form.Body,
 		TagIDs:   tagIDs,
+		Poll:     poll,
 	})
 	if err != nil {
 		serverError(w, err)
@@ -219,6 +227,11 @@ type postView struct {
 	Erased        bool   // removed over 30 days ago: its words are gone
 	CanReport     bool
 	CanDelete     bool // the viewer wrote it and it isn't deleted yet
+	IsPoll        bool
+	IsMega        bool
+	Locked        bool      // no new comments for now
+	BySite        bool      // shown as from "Snowball" (mega polls)
+	Poll          *pollView // on the post page, when it has a poll
 }
 
 func toPostView(p store.Post, tree *tags.Tree) postView {
@@ -240,6 +253,9 @@ func toPostView(p store.Post, tree *tags.Tree) postView {
 		RemovedText:   removedText(p.RemovalReason),
 		Held:          p.RemovalReason == "held",
 		Erased:        p.Erased,
+		IsPoll:        p.IsPoll,
+		IsMega:        p.IsMega,
+		Locked:        p.Locked,
 	}
 	if p.Body != "" {
 		v.BodyHTML = markdown.Render(p.Body)
@@ -255,9 +271,12 @@ func toPostView(p store.Post, tree *tags.Tree) postView {
 		// is shown as [deleted].
 		v.AuthorDeleted = true
 	}
-	if v.AuthorDeleted {
+	switch {
+	case v.AuthorDeleted:
 		v.Author = "" // the retired name is never shown
-	} else {
+	case p.BySite:
+		v.Author, v.BySite = "Snowball", true // the admin's own name stays private
+	default:
 		v.ColorClass = colorClass(p.Author)
 	}
 	return v
@@ -274,8 +293,10 @@ type postPage struct {
 	Comments        []*commentNode
 	CommentSort     string
 	LoggedIn        bool
-	Locked          bool // removed or deleted posts take no new comments
-	ViewerSuspended bool // the viewer is suspended: no comment form
+	Locked          bool   // removed or deleted posts take no new comments
+	CommentsLocked  bool   // the admin locked it
+	AdminToken      string // for the admin's lock and close-poll buttons
+	ViewerSuspended bool   // the viewer is suspended: no comment form
 	CommentForm     replyForm
 }
 
@@ -319,8 +340,18 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	poll, pstate, err := s.pollFor(r, p, opts.viewer)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	opts.pollLabels = pollLabels(poll)
 
 	view := toPostView(p, s.tree())
+	if poll != nil {
+		pv := s.newPollView(p.PublicID, poll, pstate)
+		view.Poll = &pv
+	}
 	myPostVote, err := s.myVotes(r, opts.viewer, store.VotePost, []int64{p.ID})
 	if err != nil {
 		serverError(w, err)
@@ -334,16 +365,17 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 	view.CanDelete = loggedIn && !p.Deleted && !p.AuthorDeleted && p.Author == u.Username
 
 	data := postPage{
-		basePage:    newBasePage(r, p.Title).withUp("/", "front page"),
-		Post:        view,
-		IsAdmin:     u.IsAdmin,
-		Comments:    buildTree(comments, opts),
-		CommentSort: sortMode,
-		LoggedIn:    loggedIn,
-		Locked:      p.Removed || p.Deleted,
+		basePage:       newBasePage(r, p.Title).withUp("/", "front page"),
+		Post:           view,
+		IsAdmin:        u.IsAdmin,
+		Comments:       buildTree(comments, opts),
+		CommentSort:    sortMode,
+		LoggedIn:       loggedIn,
+		Locked:         p.Removed || p.Deleted,
+		CommentsLocked: p.Locked,
 	}
 	data.ViewerSuspended = u.Suspension != nil
-	if loggedIn && !data.Locked && !data.ViewerSuspended {
+	if loggedIn && !data.Locked && !data.CommentsLocked && !data.ViewerSuspended {
 		data.CommentForm = s.newReplyForm(p.PublicID, "", "")
 	}
 	if p.Removed && !u.IsAdmin {
@@ -351,6 +383,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if u.IsAdmin {
 		data.RemoveToken = s.formToken(formRemovePost)
+		data.AdminToken = s.formToken(formModerate)
 	}
 	data.DeleteToken = opts.deleteToken
 	data.Generated = time.Since(start)
@@ -398,5 +431,6 @@ func (s *Server) handleRemovePost(w http.ResponseWriter, r *http.Request) {
 	}
 	s.refreshStats()
 	s.refreshReports()
+	s.refreshMegaToday(r.Context()) // if it was today's mega poll, its box goes now
 	http.Redirect(w, r, "/p/"+id, http.StatusSeeOther)
 }

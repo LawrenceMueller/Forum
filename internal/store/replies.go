@@ -40,7 +40,8 @@ type Reply struct {
 }
 
 // Replies lists replies to an account, newest first: direct replies to its
-// comments and top-level comments on its posts, by others, still up, under
+// comments and top-level comments on its posts (not the ones it published as
+// "Snowball"), by others, still up, under
 // things it hasn't deleted. Paged by after (nil for the first page).
 func (s *Store) Replies(ctx context.Context, userID int64, after *Cursor, limit int) ([]Reply, *Cursor, error) {
 	args := []any{userID, limit + 1}
@@ -68,7 +69,7 @@ func (s *Store) Replies(ctx context.Context, userID int64, after *Cursor, limit 
 			FROM posts p
 			JOIN comments c ON c.post_id = p.id AND c.parent_id IS NULL
 			JOIN users u ON u.id = c.author_id
-			WHERE p.author_id = $1 AND p.deleted_at IS NULL AND p.removed_at IS NULL
+			WHERE p.author_id = $1 AND NOT p.by_site AND p.deleted_at IS NULL AND p.removed_at IS NULL
 			  AND c.author_id <> $1 AND c.removed_at IS NULL AND c.deleted_at IS NULL
 		) replies `+cond+`
 		ORDER BY created_at DESC, id DESC

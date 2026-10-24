@@ -12,6 +12,7 @@
     {{if .Placeholder}}<span class="author-deleted">{{.Placeholder}}</span>
     {{else if .AuthorDeleted}}<span class="author-deleted">[deleted]</span>
     {{else}}<span class="anon {{.ColorClass}}">{{.Author}}</span>{{end}}
+    {{if .Pick}}<span class="pick {{.PickClass}}" title="voted for this in the poll">▸ {{.Pick}}</span>{{end}}
     <a class="permalink" href="/p/{{.PostID}}#c-{{.PublicID}}">{{.Posted.Format "2006-01-02 15:04"}}</a>
     {{- /* id'd so an htmx edit can update the marker in place */ -}}
     <span id="ce-{{.PublicID}}">{{if .Edited}} | edited{{end}}</span>

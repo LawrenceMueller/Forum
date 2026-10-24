@@ -33,6 +33,7 @@ type Comment struct {
 	Removed       bool   // by the admin, or held by reports
 	RemovalReason string // why, when removed ("" if unrecorded)
 	Erased        bool   // removed long enough ago that its words are gone (retention.go)
+	PollPick      int    // on a poll: the option its author voted for, or -1
 }
 
 // maxCommentsLoaded caps how many comments one page load reads. Far above
@@ -43,13 +44,14 @@ const commentColumns = `
 	c.id, coalesce(c.parent_id, 0), c.public_id, c.post_id,
 	u.username, u.deleted_at IS NOT NULL,
 	c.body, c.created_at, c.edited_at, c.upvotes, c.downvotes, c.depth,
-	c.deleted_at IS NOT NULL, c.removed_at IS NOT NULL, coalesce(c.removal_reason, ''), c.erased_at IS NOT NULL`
+	c.deleted_at IS NOT NULL, c.removed_at IS NOT NULL, coalesce(c.removal_reason, ''), c.erased_at IS NOT NULL,
+	coalesce(c.poll_pick, -1)`
 
 func scanComment(row pgx.Row, c *Comment) error {
 	return row.Scan(&c.ID, &c.ParentID, &c.PublicID, &c.PostID,
 		&c.Author, &c.AuthorDeleted,
 		&c.Body, &c.CreatedAt, &c.EditedAt, &c.Upvotes, &c.Downvotes, &c.Depth,
-		&c.Deleted, &c.Removed, &c.RemovalReason, &c.Erased)
+		&c.Deleted, &c.Removed, &c.RemovalReason, &c.Erased, &c.PollPick)
 }
 
 // CommentsForPost loads every comment on a post, oldest first. The tree is
@@ -95,6 +97,7 @@ type NewComment struct {
 	ParentPublicID string // "" for a top-level comment
 	AuthorID       int64
 	Body           string
+	PollVoter      string // the author's fingerprint in this post's poll (PollVoter), to tag the comment with their pick
 }
 
 // CreateComment saves a comment, returning its public ID and depth.
@@ -141,13 +144,14 @@ func (s *Store) createCommentOnce(ctx context.Context, c NewComment, publicID, h
 
 	// FOR UPDATE locks the post row until we commit, so two comments
 	// arriving at once can't both read the same count and lose one.
-	var locked bool
+	var locked, commentsLocked bool
 	var notify int64 // whose reply this is: the post's author, or the parent comment's
 	err = tx.QueryRow(ctx, `
 		SELECT deleted_at IS NOT NULL OR (removed_at IS NOT NULL
-		       AND NOT (removal_reason = 'shadow' AND author_id = $2)), author_id
+		       AND NOT (removal_reason = 'shadow' AND author_id = $2)), locked_at IS NOT NULL,
+		       CASE WHEN by_site THEN 0 ELSE author_id END -- nobody is notified of comments on Snowball's own posts
 		FROM posts WHERE id = $1 FOR UPDATE`,
-		c.PostID, c.AuthorID).Scan(&locked, &notify)
+		c.PostID, c.AuthorID).Scan(&locked, &commentsLocked, &notify)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, ErrPostNotFound
 	}
@@ -156,6 +160,9 @@ func (s *Store) createCommentOnce(ctx context.Context, c NewComment, publicID, h
 	}
 	if locked {
 		return 0, ErrPostLocked
+	}
+	if commentsLocked {
+		return 0, ErrCommentsLocked
 	}
 
 	var parentID *int64 // NULL for top-level
@@ -184,9 +191,10 @@ func (s *Store) createCommentOnce(ctx context.Context, c NewComment, publicID, h
 		removedAt, reason = time.Now(), shadowReason
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO comments (public_id, post_id, parent_id, author_id, depth, body, content_hash, removed_at, removal_reason)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		publicID, c.PostID, parentID, c.AuthorID, depth, c.Body, hash, removedAt, reason,
+		INSERT INTO comments (public_id, post_id, parent_id, author_id, depth, body, content_hash, removed_at, removal_reason, poll_pick)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+		        (SELECT position FROM poll_votes WHERE post_id = $2 AND voter = $10))`,
+		publicID, c.PostID, parentID, c.AuthorID, depth, c.Body, hash, removedAt, reason, c.PollVoter,
 	); err != nil {
 		return 0, err
 	}

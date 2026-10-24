@@ -1,0 +1,48 @@
+{{/* adminhub.html: the admin's starting point. Every admin page, and what needs attention. */}}
+{{define "content"}}
+<main class="narrow">
+  <h1 class="page-title">Admin <span class="admin-badge">admin</span></h1>
+
+  <section class="panel">
+    <h2>Moderation</h2>
+    <ul class="admin-list">
+      <li><a href="/admin/reports">Reports</a>
+        {{if .OpenReports}}<strong class="admin-count">{{.OpenReports}} to review</strong>{{else}}<span class="hint">nothing waiting</span>{{end}}
+        {{if .OpenAppeals}}<strong class="admin-count">{{.OpenAppeals}} {{if eq .OpenAppeals 1}}appeal{{else}}appeals{{end}}</strong>{{end}}</li>
+      <li><a href="/modlog">Moderation log</a> <span class="hint">public</span></li>
+      <li><a href="/admin/domains">Blocked sites</a></li>
+    </ul>
+    <form class="admin-filter" method="get" action="/admin/users">
+      <label for="find-account">Look up an account</label>
+      <input id="find-account" name="name" type="text" required autocapitalize="none" spellcheck="false" placeholder="username">
+      <button class="button" type="submit">Look up</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Mega polls</h2>
+    {{with .Today}}
+      {{if .Published}}
+      <p>Today: <a href="/p/{{.PostPublicID}}">{{.Question}}</a></p>
+      {{else if .Problem}}
+      <div class="errors"><p><strong>Today's mega poll couldn't be published:</strong> {{.Problem}}
+        <a href="/admin/polls/{{.DayText}}">Fix its topics</a> and it goes up straight away.</p></div>
+      {{else}}
+      <p>Today: {{.Question}} <span class="hint">(going up within a minute)</span></p>
+      {{end}}
+    {{else}}
+      <p class="hint">Nothing for today: the front page has no mega poll box.</p>
+    {{end}}
+    <p>{{if .Queued}}{{.Queued}} more queued, up to {{.QueuedTo}}.{{else}}<strong>Nothing queued after today.</strong>{{end}}</p>
+    <p><a class="button" href="/admin/polls">Queue and write mega polls</a> <a href="/polls">the public archive</a></p>
+  </section>
+
+  <section class="panel">
+    <h2>Site</h2>
+    <ul class="admin-list">
+      <li><a href="/admin/notes">Notes</a> <span class="hint">the front page's note box</span></li>
+      <li><a href="/admin/tags">Tags</a> <span class="hint">the tag tree, aliases, merges</span></li>
+    </ul>
+  </section>
+</main>
+{{end}}

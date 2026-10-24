@@ -11,7 +11,7 @@ import (
 // SchemaVersion is the migration this code expects the database to be at:
 // the number of the newest file in migrations/. A test in internal/testdb
 // fails if the two ever disagree, so adding a migration means bumping this.
-const SchemaVersion = 19
+const SchemaVersion = 22
 
 // ErrSchemaBehind means the database is missing migrations this code needs.
 var ErrSchemaBehind = errors.New("database is missing migrations")

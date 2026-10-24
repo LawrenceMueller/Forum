@@ -22,6 +22,8 @@ type NewPost struct {
 	URL      string // empty for a text-only post
 	Body     string // Markdown source, may be empty
 	TagIDs   []int
+	Poll     *NewPoll // nil for a post without a poll
+	BySite   bool     // shown as from "Snowball", not its author (mega polls)
 }
 
 // Post is a post as the rest of the app sees it.
@@ -43,6 +45,10 @@ type Post struct {
 	Removed        bool   // by the admin, or held by reports
 	RemovalReason  string // why, when removed: "spam", "held", ... ("" if unrecorded)
 	Erased         bool   // removed long enough ago that its words are gone (retention.go)
+	IsPoll         bool   // it carries a poll (polls.go)
+	IsMega         bool   // ...and it's a mega poll (megapolls.go)
+	BySite         bool   // shown as from "Snowball", not its author
+	Locked         bool   // the admin locked it: no new comments (locks.go)
 }
 
 // Public IDs are 8 characters of lowercase base32 (a-z, 2-7): 40 random
@@ -104,49 +110,64 @@ func (s *Store) createPostWithID(ctx context.Context, p NewPost, publicID string
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if _, err := insertPost(ctx, tx, p, publicID, url, hash); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
 
+// insertPost writes a post, its tags and any poll inside a transaction,
+// returning its internal ID. (Publishing a mega poll uses it too.)
+func insertPost(ctx context.Context, tx pgx.Tx, p NewPost, publicID string, url *string, hash string) (int64, error) {
 	var postID int64
-	err = tx.QueryRow(ctx, `
-		INSERT INTO posts (public_id, author_id, title, url, body, content_hash)
-		VALUES ($1, $2, $3, $4, $5, $6)
+	err := tx.QueryRow(ctx, `
+		INSERT INTO posts (public_id, author_id, title, url, body, content_hash, by_site)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id`,
-		publicID, p.AuthorID, p.Title, url, p.Body, hash,
+		publicID, p.AuthorID, p.Title, url, p.Body, hash, p.BySite,
 	).Scan(&postID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	for _, tagID := range p.TagIDs {
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO post_tags (post_id, tag_id) VALUES ($1, $2)`, postID, tagID,
 		); err != nil {
-			return err
+			return 0, err
+		}
+	}
+	if p.Poll != nil {
+		if err := insertPoll(ctx, tx, postID, *p.Poll); err != nil {
+			return 0, err
 		}
 	}
 	if err := refreshTagPosts(ctx, tx, []int64{postID}); err != nil {
-		return err
+		return 0, err
 	}
 	// A shadowbanned account's post arrives already removed (cleanup.go).
 	if shadow, err := shadowbanned(ctx, tx, p.AuthorID); err != nil {
-		return err
+		return 0, err
 	} else if shadow {
 		if _, err := tx.Exec(ctx, `UPDATE posts SET removed_at = now(), removal_reason = $2 WHERE id = $1`,
 			postID, shadowReason); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	return tx.Commit(ctx)
+	return postID, nil
 }
 
 // PostByPublicID loads one post with its author and tags.
 // found is false if there's no such post.
 func (s *Store) PostByPublicID(ctx context.Context, publicID string) (p Post, found bool, err error) {
+	var mega *bool // NULL: no poll
 	err = s.db.QueryRow(ctx, `
 		SELECT p.id, p.public_id, p.title, coalesce(p.url, ''), p.body,
 		       u.username, u.deleted_at IS NOT NULL,
 		       p.created_at, p.edited_at, p.score, p.comment_count,
 		       coalesce(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}'),
-		       p.deleted_at IS NOT NULL, p.removed_at IS NOT NULL, coalesce(p.removal_reason, ''), p.erased_at IS NOT NULL
+		       p.deleted_at IS NOT NULL, p.removed_at IS NOT NULL, coalesce(p.removal_reason, ''), p.erased_at IS NOT NULL,
+		       (SELECT mega FROM polls WHERE post_id = p.id), p.by_site, p.locked_at IS NOT NULL
 		FROM posts p
 		JOIN users u ON u.id = p.author_id
 		LEFT JOIN post_tags pt ON pt.post_id = p.id
@@ -157,11 +178,12 @@ func (s *Store) PostByPublicID(ctx context.Context, publicID string) (p Post, fo
 	).Scan(&p.ID, &p.PublicID, &p.Title, &p.URL, &p.Body,
 		&p.Author, &p.AuthorDeleted,
 		&p.CreatedAt, &p.EditedAt, &p.Score, &p.CommentCount,
-		&p.Tags, &p.Deleted, &p.Removed, &p.RemovalReason, &p.Erased)
+		&p.Tags, &p.Deleted, &p.Removed, &p.RemovalReason, &p.Erased, &mega, &p.BySite, &p.Locked)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Post{}, false, nil
 	}
+	p.IsPoll, p.IsMega = mega != nil, mega != nil && *mega
 	if err != nil {
 		return Post{}, false, err
 	}

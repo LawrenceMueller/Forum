@@ -39,6 +39,7 @@ type Server struct {
 	limits     rateLimits
 	logins     *loginGuard
 	stats      siteStats
+	megaToday  atomic.Pointer[megaToday] // today's mega poll, for the front page (megapolls.go)
 	tagTree    atomic.Pointer[tags.Tree] // the tag system, in memory (tags.go)
 	bodies     *markdown.Cache           // rendered post and comment texts
 	blocked    atomic.Pointer[[]string]  // the domain blocklist (spamchecks.go)
@@ -67,6 +68,7 @@ type rateLimits struct {
 	editing       *limiter // saving edits to posts and comments, per ACCOUNT
 	report        *limiter // sending reports, per IP (accounts also have a daily cap)
 	suggest       *limiter // topic suggestions while typing, per IP
+	pollBox       *limiter // live poll results, per IP
 }
 
 func newRateLimits() rateLimits {
@@ -90,6 +92,7 @@ func newRateLimits() rateLimits {
 		editing:       newLimiter("editing", 10*time.Second, 20),         // 20 at once, then one per 10s
 		report:        newLimiter("report", 30*time.Second, 10),          // 10 at once, then one per 30s
 		suggest:       newLimiter("suggest", 250*time.Millisecond, 40),   // brisk typing, not a scraper
+		pollBox:       newLimiter("poll-box", 2*time.Second, 30),         // live results: one every 15s per open tab
 	}
 }
 
@@ -134,6 +137,7 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	if err := s.loadLatestNote(ctx); err != nil {
 		return nil, err
 	}
+	s.publishMegaPolls(ctx)
 
 	s.refreshStats()
 	s.refreshReports()
@@ -197,6 +201,8 @@ func (s *Server) Handler() http.Handler {
 
 	// Votes.
 	mux.Handle("POST /vote", s.limit(lim.vote, noStore(s.notSuspended(s.handleVote))))
+	mux.Handle("POST /p/{id}/poll", s.limit(lim.vote, noStore(s.notSuspended(s.handlePollVote))))
+	mux.Handle("GET /p/{id}/poll", s.limit(lim.pollBox, noStore(s.handlePollBox)))
 
 	// Comments.
 	mux.Handle("POST /p/{id}/comment", s.limit(lim.comment, noStore(s.notSuspended(s.handleComment))))
@@ -226,6 +232,15 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /admin/appeals", noStore(s.adminOnly(s.handleAppealDecision)))
 	mux.HandleFunc("GET /rules", s.handleRules)
 	mux.HandleFunc("GET /about", s.handleAbout)
+	mux.HandleFunc("GET /polls", s.handlePollArchive)
+	mux.Handle("GET /admin", noStore(s.adminOnly(s.handleAdminHub)))
+	mux.Handle("GET /admin/polls", noStore(s.adminOnly(s.handleAdminPolls)))
+	mux.Handle("POST /admin/polls", noStore(s.adminOnly(s.handleAdminPollChange)))
+	mux.Handle("GET /admin/polls/{day}", noStore(s.adminOnly(s.handleAdminPolls)))
+	mux.Handle("POST /admin/polls/today", noStore(s.handleMegaToday))
+	mux.Handle("POST /p/{id}/lock", noStore(s.handleLock))
+	mux.Handle("POST /p/{id}/poll/close", noStore(s.handleClosePoll))
+	mux.Handle("POST /admin/polls/{day}", noStore(s.adminOnly(s.handleAdminPollChange)))
 	mux.HandleFunc("GET /notes", s.handleNotes)
 	mux.Handle("GET /admin/notes", noStore(s.adminOnly(s.handleAdminNotes)))
 	mux.Handle("POST /admin/notes", noStore(s.adminOnly(s.handleAdminNoteChange)))

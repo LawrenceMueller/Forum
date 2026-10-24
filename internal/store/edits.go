@@ -96,7 +96,8 @@ func (s *Store) EditComment(ctx context.Context, publicID string, authorID int64
 		WHERE public_id = $4
 		  AND author_id = $5
 		  AND removed_at IS NULL AND deleted_at IS NULL
-		  AND created_at > now() - $6 * interval '1 second'`,
+		  AND created_at > now() - $6 * interval '1 second'
+		  AND NOT EXISTS (SELECT 1 FROM posts p WHERE p.id = comments.post_id AND p.locked_at IS NOT NULL)`,
 		body, ContentHash("", "", body), graceSecs, publicID, authorID, windowSecs,
 	)
 	if err != nil {

@@ -38,8 +38,8 @@ func (c CleanupResult) String() string {
 
 // Cleanup removes everything an account posted for reason, closes the
 // reports on it, and withdraws the votes cast under voter (the account's
-// vote fingerprint).
-func (s *Store) Cleanup(ctx context.Context, userID int64, voter, reason string) (CleanupResult, error) {
+// vote fingerprint) and, in polls still open, under pollKey (its poll key).
+func (s *Store) Cleanup(ctx context.Context, userID int64, voter, pollKey, reason string) (CleanupResult, error) {
 	var res CleanupResult
 	if !slices.Contains(RemovalReasons, reason) {
 		return res, fmt.Errorf("unknown removal reason %q", reason)
@@ -100,7 +100,11 @@ func (s *Store) Cleanup(ctx context.Context, userID int64, voter, reason string)
 	if err != nil {
 		return res, err
 	}
-	res.Votes = n
+	m, err := withdrawPollVotes(ctx, tx, pollKey)
+	if err != nil {
+		return res, err
+	}
+	res.Votes = n + m
 
 	if err := logAccountAction(ctx, tx, "cleanup", reason, res.String()); err != nil {
 		return res, err
@@ -138,9 +142,9 @@ func withdrawVotes(ctx context.Context, tx pgx.Tx, voter string) (int, error) {
 }
 
 // SetShadowban turns an account's shadowban on or off. Turning it on also
-// withdraws the votes it has already cast (under voter); what it already
-// posted is left for a cleanup to decide.
-func (s *Store) SetShadowban(ctx context.Context, userID int64, voter string, on bool) error {
+// withdraws the votes it has already cast (under voter, and pollKey in open
+// polls); what it already posted is left for a cleanup to decide.
+func (s *Store) SetShadowban(ctx context.Context, userID int64, voter, pollKey string, on bool) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -166,6 +170,9 @@ func (s *Store) SetShadowban(ctx context.Context, userID int64, voter string, on
 			return err
 		}
 		if _, err := withdrawVotes(ctx, tx, voter); err != nil {
+			return err
+		}
+		if _, err := withdrawPollVotes(ctx, tx, pollKey); err != nil {
 			return err
 		}
 		err = logAccountAction(ctx, tx, "shadowban", "spam", "")

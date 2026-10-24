@@ -40,7 +40,7 @@ func TestReplies(t *testing.T) {
 	}
 
 	// A spam bot's replies count for nothing and never show.
-	if err := st.SetShadowban(ctx, bot, "fp-bot", true); err != nil {
+	if err := st.SetShadowban(ctx, bot, "fp-bot", "pk-bot", true); err != nil {
 		t.Fatal(err)
 	}
 	mustComment(t, st, mine, bot, "", "cheap watches")
